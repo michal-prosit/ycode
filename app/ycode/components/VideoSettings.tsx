@@ -533,8 +533,9 @@ export default function VideoSettings(props: VideoSettingsProps) {
                 </div>
 
                 <Button
+                  type="button"
                   variant="secondary"
-                  className="flex-1"
+                  className="flex-1 justify-start min-w-0"
                   size="sm"
                   onClick={() => {
                     openFileManager(
@@ -555,7 +556,16 @@ export default function VideoSettings(props: VideoSettingsProps) {
                     );
                   }}
                 >
-                  {assetFilename ? 'Change file' : 'Choose file'}
+                  <span className="truncate">{assetFilename || 'Choose file'}</span>
+                  {assetFilename && (
+                    <span
+                      role="button"
+                      className="ml-auto shrink-0 -mr-1 p-1 rounded hover:bg-background/60"
+                      onClick={(e) => { e.stopPropagation(); handleVideoChange(''); }}
+                    >
+                      <Icon name="x" className="size-3" />
+                    </span>
+                  )}
                 </Button>
               </>
             )}

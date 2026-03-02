@@ -445,12 +445,22 @@ export default function AudioSettings(props: AudioSettingsProps) {
             </div>
 
             <Button
+              type="button"
               variant="secondary"
               size="sm"
-              className="flex-1"
+              className="flex-1 justify-start min-w-0"
               onClick={handleBrowseAudio}
             >
-              {assetFilename ? 'Change file' : 'Choose file'}
+              <span className="truncate">{assetFilename || 'Choose file'}</span>
+              {assetFilename && (
+                <span
+                  role="button"
+                  className="ml-auto shrink-0 -mr-1 p-1 rounded hover:bg-background/60"
+                  onClick={(e) => { e.stopPropagation(); handleAudioChange(''); }}
+                >
+                  <Icon name="x" className="size-3" />
+                </span>
+              )}
             </Button>
           </div>
         </div>

@@ -103,11 +103,11 @@ export default function RichTextComponentBlock({
   return (
     <div className="rounded-md border border-border bg-background text-xs select-none">
       {/* Header */}
-      <div className="flex w-full items-center gap-2 px-4 py-3 text-left">
+      <div className="flex w-full items-center text-left">
         <button
           type="button"
           className={cn(
-            'flex min-w-0 flex-1 items-center gap-2 text-left',
+            'flex min-w-0 flex-1 items-center gap-2 text-left px-4.5 py-4.5',
             hasVariables && 'cursor-pointer',
           )}
           onClick={() => hasVariables && setIsExpanded(prev => !prev)}
@@ -128,6 +128,7 @@ export default function RichTextComponentBlock({
               <Button
                 size="sm"
                 variant="ghost"
+                className="mr-3"
               >
                 <Icon name="dotsHorizontal" className="size-4" />
               </Button>
