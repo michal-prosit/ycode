@@ -2,8 +2,8 @@
  * Utility Elements Templates
  */
 
-import { BlockTemplate, SliderSettings } from '@/types';
-import { getTemplateRef } from './blocks';
+import { BlockTemplate, SliderSettings, Layer } from '@/types';
+import { getTemplateRef, getLayerFromTemplate } from './blocks';
 
 /** Default slider settings applied when creating a new slider */
 export const DEFAULT_SLIDER_SETTINGS: SliderSettings = {
@@ -27,6 +27,69 @@ export const DEFAULT_SLIDER_SETTINGS: SliderSettings = {
   duration: '0.5',
 };
 
+/** Base design properties shared by all slide layers */
+const SLIDE_BASE_DESIGN = {
+  layout: { isActive: true, display: 'Flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5' },
+  sizing: { isActive: true, width: '100%', height: '100%' },
+  positioning: { isActive: true, position: 'relative' },
+} as const;
+
+/** Create a slide template ref with a custom title and background image URL */
+function createSlideRef(title: string, imageUrl: string) {
+  return getTemplateRef('slide', {
+    customName: title,
+    design: {
+      ...SLIDE_BASE_DESIGN,
+      backgrounds: { isActive: true, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundImage: '--bg-img', bgImageVars: { '--bg-img': `url(${imageUrl})` } },
+    },
+    variables: {
+      backgroundImage: { src: { type: 'dynamic_text', data: { content: imageUrl } } },
+    },
+    children: [
+      {
+        name: 'text',
+        customName: 'Heading',
+        settings: { tag: 'h1' },
+        classes: ['text-[48px]', 'font-[700]', 'leading-[1.1]', 'tracking-[-0.01em]'],
+        design: { typography: { isActive: true, fontSize: '48px', fontWeight: '700', lineHeight: '1.1', letterSpacing: '-0.01' } },
+        restrictions: { editText: true },
+        variables: { text: { type: 'dynamic_rich_text', data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: title }] }] } } } },
+      },
+      {
+        name: 'text',
+        customName: 'Text',
+        settings: { tag: 'p' },
+        classes: ['text-[16px]', 'static'],
+        design: { typography: { isActive: true, fontSize: '16px' }, positioning: { isActive: true, position: 'static' } },
+        restrictions: { editText: true },
+        variables: { text: { type: 'dynamic_rich_text', data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Add your slogan here' }] }] } } } },
+      },
+    ],
+  });
+}
+
+/** Create a resolved slide layer with a custom title and background image URL */
+export function createSlideLayer(title: string, imageUrl: string): Layer | null {
+  const slide = getLayerFromTemplate('slide');
+  if (!slide) return null;
+
+  slide.customName = title;
+  slide.design = {
+    ...SLIDE_BASE_DESIGN,
+    backgrounds: { isActive: true, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundImage: '--bg-img', bgImageVars: { '--bg-img': `url(${imageUrl})` } },
+  };
+  slide.variables = {
+    backgroundImage: { src: { type: 'dynamic_text', data: { content: imageUrl } } },
+  };
+
+  const heading = slide.children?.find(c => c.customName === 'Heading');
+  if (heading) {
+    heading.variables = { text: { type: 'dynamic_rich_text', data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: title }] }] } } } };
+  }
+
+  return slide;
+}
+
 /** All layer names that are part of the slider element */
 export const SLIDER_LAYER_NAMES = [
   'slider', 'slides', 'slide',
@@ -45,7 +108,6 @@ export function isSliderLayerName(name: string): name is SliderLayerName {
 export const SWIPER_CLASS_MAP: Record<string, string> = {
   slider: 'swiper',
   slides: 'swiper-wrapper',
-  slide: 'swiper-slide',
 };
 
 /** Data attributes added to slider nav/pagination elements on production for Swiper targeting */
@@ -102,9 +164,35 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
     template: {
       name: 'slide',
       customName: 'Slide',
-      classes: ['w-full', 'h-full'],
+      classes: ['w-full', 'h-full', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'gap-[5px]', 'bg-cover', 'bg-center', 'bg-no-repeat', 'bg-[image:var(--bg-img)]'],
+      design: {
+        ...SLIDE_BASE_DESIGN,
+        backgrounds: { isActive: true, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundImage: '--bg-img', bgImageVars: { '--bg-img': 'url(/ycode/layouts/assets/placeholder-2.webp)' } },
+      },
       restrictions: { ancestor: 'slides' },
-      children: [],
+      variables: {
+        backgroundImage: { src: { type: 'dynamic_text', data: { content: '/ycode/layouts/assets/placeholder-2.webp' } } },
+      },
+      children: [
+        {
+          name: 'text',
+          customName: 'Heading',
+          settings: { tag: 'h1' },
+          classes: ['text-[48px]', 'font-[700]', 'leading-[1.1]', 'tracking-[-0.01em]'],
+          design: { typography: { isActive: true, fontSize: '48px', fontWeight: '700', lineHeight: '1.1', letterSpacing: '-0.01' } },
+          restrictions: { editText: true },
+          variables: { text: { type: 'dynamic_rich_text', data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Slide' }] }] } } } },
+        },
+        {
+          name: 'text',
+          customName: 'Text',
+          settings: { tag: 'p' },
+          classes: ['text-[16px]', 'static'],
+          design: { typography: { isActive: true, fontSize: '16px' }, positioning: { isActive: true, position: 'static' } },
+          restrictions: { editText: true },
+          variables: { text: { type: 'dynamic_rich_text', data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Add your slogan here' }] }] } } } },
+        },
+      ],
     },
   },
 
@@ -309,60 +397,9 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
           restrictions: { copy: false, delete: false, ancestor: 'slider' },
           open: true,
           children: [
-            {
-              name: 'slide',
-              customName: 'Slide 1',
-              classes: ['w-full', 'h-full'],
-              restrictions: { ancestor: 'slides' },
-              children: [
-                getTemplateRef('image', {
-                  classes: ['w-full', 'h-full', 'object-cover'],
-                  design: { sizing: { isActive: true, width: '100%', height: '100%', objectFit: 'cover' } },
-                  variables: {
-                    image: {
-                      src: { type: 'dynamic_text', data: { content: '/ycode/layouts/assets/placeholder-2.webp' } },
-                      alt: { type: 'dynamic_text', data: { content: 'Slide 1' } },
-                    },
-                  },
-                }),
-              ],
-            },
-            {
-              name: 'slide',
-              customName: 'Slide 2',
-              classes: ['w-full', 'h-full'],
-              restrictions: { ancestor: 'slides' },
-              children: [
-                getTemplateRef('image', {
-                  classes: ['w-full', 'h-full', 'object-cover'],
-                  design: { sizing: { isActive: true, width: '100%', height: '100%', objectFit: 'cover' } },
-                  variables: {
-                    image: {
-                      src: { type: 'dynamic_text', data: { content: '/ycode/layouts/assets/placeholder-3.webp' } },
-                      alt: { type: 'dynamic_text', data: { content: 'Slide 2' } },
-                    },
-                  },
-                }),
-              ],
-            },
-            {
-              name: 'slide',
-              customName: 'Slide 3',
-              classes: ['w-full', 'h-full'],
-              restrictions: { ancestor: 'slides' },
-              children: [
-                getTemplateRef('image', {
-                  classes: ['w-full', 'h-full', 'object-cover'],
-                  design: { sizing: { isActive: true, width: '100%', height: '100%', objectFit: 'cover' } },
-                  variables: {
-                    image: {
-                      src: { type: 'dynamic_text', data: { content: '/ycode/layouts/assets/placeholder-7.webp' } },
-                      alt: { type: 'dynamic_text', data: { content: 'Slide 3' } },
-                    },
-                  },
-                }),
-              ],
-            },
+            createSlideRef('Slide 1', '/ycode/layouts/assets/placeholder-2.webp'),
+            createSlideRef('Slide 2', '/ycode/layouts/assets/placeholder-3.webp'),
+            createSlideRef('Slide 3', '/ycode/layouts/assets/placeholder-7.webp'),
           ],
         },
         // Navigation (prev/next buttons)

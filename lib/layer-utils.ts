@@ -114,20 +114,24 @@ export function findAncestorByName(layers: Layer[], layerId: string, ancestorNam
  * active pagination type (bullets vs fraction) inside the pagination wrapper.
  */
 export function filterDisabledSliderLayers(layers: Layer[], sliderSettings?: Layer['settings']): Layer[] {
-  return layers.map(layer => {
+  const sliderConfig = sliderSettings?.slider;
+
+  // When called with sliderSettings we're already inside a slider context,
+  // so filter disabled nav/pagination wrappers at the current level.
+  const inputLayers = sliderConfig
+    ? layers.filter(layer => {
+      if (layer.name === 'slideNavigationWrapper' && !sliderConfig.navigation) return false;
+      if (layer.name === 'slidePaginationWrapper' && !sliderConfig.pagination) return false;
+      return true;
+    })
+    : layers;
+
+  return inputLayers.map(layer => {
     if (!layer.children?.length) return layer;
 
     const currentSliderSettings = layer.name === 'slider' ? layer.settings : sliderSettings;
     let filteredChildren = filterDisabledSliderLayers(layer.children, currentSliderSettings);
     const settings = currentSliderSettings?.slider;
-
-    if (layer.name === 'slider') {
-      filteredChildren = filteredChildren.filter(child => {
-        if (child.name === 'slideNavigationWrapper' && !settings?.navigation) return false;
-        if (child.name === 'slidePaginationWrapper' && !settings?.pagination) return false;
-        return true;
-      });
-    }
 
     if (layer.name === 'slidePaginationWrapper' && settings) {
       const isFraction = settings.paginationType === 'fraction';

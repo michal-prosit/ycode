@@ -3633,6 +3633,12 @@ function layerToHtml(
     elementHtml = `<${tag}${attrsStr}>${escapeHtml(textContent)}${childrenHtml}</${tag}>`;
   }
 
+  // Wrap slide layers in a swiper-slide wrapper so Swiper's enforced styles
+  // don't conflict with the user's design on the actual slide element
+  if (layer.name === 'slide') {
+    elementHtml = `<div class="swiper-slide">${elementHtml}</div>`;
+  }
+
   // Wrap with link if layer has link settings (but is not already an <a> tag)
   const linkSettings = layer.variables?.link;
   if (tag !== 'a' && linkSettings && linkSettings.type) {

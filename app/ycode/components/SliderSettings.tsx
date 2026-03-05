@@ -25,9 +25,11 @@ import SettingsPanel from './SettingsPanel';
 import ToggleGroup from './ToggleGroup';
 
 import { findAncestorByName } from '@/lib/layer-utils';
-import { isSliderLayerName, DEFAULT_SLIDER_SETTINGS } from '@/lib/templates/utilities';
+import { isSliderLayerName, DEFAULT_SLIDER_SETTINGS, createSlideLayer } from '@/lib/templates/utilities';
 import { EFFECTS_WITH_PER_VIEW } from '@/lib/slider-utils';
 import { slidePrev, slideNext } from '@/hooks/use-canvas-slider';
+import { useEditorStore } from '@/stores/useEditorStore';
+import { usePagesStore } from '@/stores/usePagesStore';
 
 import type { Layer, SliderSettings as SliderSettingsType, SliderAnimationEffect, SliderLoopMode, SliderPaginationType } from '@/types';
 
@@ -70,6 +72,22 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
   const handlePrev = useCallback(() => slidePrev(sliderLayerId), [sliderLayerId]);
   const handleNext = useCallback(() => slideNext(sliderLayerId), [sliderLayerId]);
 
+  const currentPageId = useEditorStore((state) => state.currentPageId);
+  const addLayerWithId = usePagesStore((state) => state.addLayerWithId);
+  const setSelectedLayerId = useEditorStore((state) => state.setSelectedLayerId);
+
+  const handleAddSlide = useCallback(() => {
+    if (!currentPageId || !sliderLayer) return;
+    const slidesLayer = sliderLayer.children?.find(c => c.name === 'slides');
+    if (!slidesLayer) return;
+    const slideNumber = (slidesLayer.children?.length ?? 0) + 1;
+    const slide = createSlideLayer(`Slide ${slideNumber}`, '/ycode/layouts/assets/placeholder-2.webp');
+    if (slide) {
+      addLayerWithId(currentPageId, slidesLayer.id, slide);
+      requestAnimationFrame(() => setSelectedLayerId(slide.id));
+    }
+  }, [currentPageId, sliderLayer, addLayerWithId, setSelectedLayerId]);
+
   // Guard: only render for slider-family layers
   if (!layer || !sliderLayer) return null;
   if (!isSliderLayerName(layer.name)) return null;
@@ -104,6 +122,15 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
       onToggle={() => setIsOpen(!isOpen)}
       action={
         <div className="flex items-center gap-1">
+          <Button
+            variant="secondary"
+            size="xs"
+            className="size-6 p-0"
+            onClick={handleAddSlide}
+            aria-label="Add slide"
+          >
+            <Icon name="plus" className="size-2.5" />
+          </Button>
           <Button
             variant="secondary"
             size="xs"

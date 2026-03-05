@@ -75,8 +75,8 @@ export function useCanvasSlider(
 
   const settings: SliderSettings = { ...DEFAULT_SLIDER_SETTINGS, ...layer.settings?.slider };
   const settingsKey = useMemo(
-    () => `${settings.animationEffect}-${settings.duration}-${settings.easing}-${settings.groupSlide}-${settings.slidesPerGroup}-${settings.centered}-${settings.paginationType}`,
-    [settings.animationEffect, settings.duration, settings.easing, settings.groupSlide, settings.slidesPerGroup, settings.centered, settings.paginationType],
+    () => `${settings.animationEffect}-${settings.duration}-${settings.easing}-${settings.groupSlide}-${settings.slidesPerGroup}-${settings.centered}-${settings.paginationType}-${settings.navigation}-${settings.loop}`,
+    [settings.animationEffect, settings.duration, settings.easing, settings.groupSlide, settings.slidesPerGroup, settings.centered, settings.paginationType, settings.navigation, settings.loop],
   );
 
   const settingsRef = useRef(settings);
@@ -90,6 +90,39 @@ export function useCanvasSlider(
     const options = buildCanvasSwiperOptions(settingsRef.current);
     const swiper = new Swiper(el, options);
     applySwiperEasing(el, settingsRef.current.easing);
+
+    // Sync nav button disabled state from Swiper's position tracking.
+    // Navigation module is disabled on canvas to prevent click-to-navigate,
+    // so we read isBeginning/isEnd directly and set aria-disabled manually.
+    // pointer-events is kept enabled so buttons remain selectable in the editor.
+    const navWrapper = layerRef.current.children?.find(c => c.name === 'slideNavigationWrapper');
+    const prevLayer = navWrapper?.children?.find(c => c.name === 'slideButtonPrev');
+    const nextLayer = navWrapper?.children?.find(c => c.name === 'slideButtonNext');
+    const prevEl = prevLayer ? el.querySelector(`[data-layer-id="${prevLayer.id}"]`) as HTMLElement : null;
+    const nextEl = nextLayer ? el.querySelector(`[data-layer-id="${nextLayer.id}"]`) as HTMLElement : null;
+
+    const syncNavState = () => {
+      const canLoop = swiper.params.loop || swiper.params.rewind;
+      if (prevEl) {
+        if (!canLoop && swiper.isBeginning) {
+          prevEl.setAttribute('aria-disabled', 'true');
+        } else {
+          prevEl.removeAttribute('aria-disabled');
+        }
+        prevEl.style.pointerEvents = 'auto';
+      }
+      if (nextEl) {
+        if (!canLoop && swiper.isEnd) {
+          nextEl.setAttribute('aria-disabled', 'true');
+        } else {
+          nextEl.removeAttribute('aria-disabled');
+        }
+        nextEl.style.pointerEvents = 'auto';
+      }
+    };
+
+    swiper.on('slideChange', syncNavState);
+    requestAnimationFrame(syncNavState);
 
     swiperRef.current = swiper;
     swiperRegistry.set(layer.id, { swiper, layerRef });

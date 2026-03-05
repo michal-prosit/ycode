@@ -2609,6 +2609,12 @@ const LayerItem: React.FC<{
   // Don't wrap layers inside component instances (they're not directly editable)
   let content = renderContent();
 
+  // Wrap slide layers in a swiper-slide wrapper so Swiper's enforced styles
+  // don't conflict with the user's design on the actual slide element
+  if (layer.name === 'slide') {
+    content = <div className="swiper-slide">{content}</div>;
+  }
+
   // Wrap with link if layer has link settings (published mode only)
   // In edit mode, links are not interactive to allow layer selection
   // Skip for buttons — they render as <a> directly (see isButtonWithLink)
