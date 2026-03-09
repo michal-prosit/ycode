@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { useControlledInputs } from '@/hooks/use-controlled-input';
 import { useModeToggle } from '@/hooks/use-mode-toggle';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { extractMeasurementValue } from '@/lib/measurement-utils';
-import { removeSpaces } from '@/lib/utils';
+import { cn, removeSpaces } from '@/lib/utils';
 import ColorPropertyField from '@/app/ycode/components/ColorPropertyField';
 import type { Collection, CollectionField, Layer } from '@/types';
 import type { FieldGroup } from '@/lib/collection-field-utils';
@@ -27,6 +27,20 @@ interface BorderControlsProps {
   fieldGroups?: FieldGroup[];
   allFields?: Record<string, CollectionField[]>;
   collections?: Collection[];
+}
+
+function parseBorderColorToCss(color: string): string {
+  if (!color) return '#000000';
+  const match = color.match(/^(#[0-9a-fA-F]{6})\/(\d+)$/);
+  if (match) {
+    const hex = match[1];
+    const a = parseInt(match[2]) / 100;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  return color;
 }
 
 export default function BorderControls({ layer, onLayerUpdate, activeTextStyleKey, fieldGroups, allFields, collections }: BorderControlsProps) {
@@ -361,19 +375,25 @@ export default function BorderControls({ layer, onLayerUpdate, activeTextStyleKe
               <PopoverTrigger asChild>
                 {!hasBorder ? (
                   <Button
+                    variant="input"
                     size="sm"
-                    variant="secondary"
-                    className="w-full"
+                    className="justify-start w-full"
                     onClick={handleAddBorder}
                   >
-                    <Icon name="plus" />
-                    Add
+                      <div className="size-5 rounded-[6px] shrink-0 -ml-1 relative overflow-hidden outline outline-current/10 outline-offset-[-1px]">
+                        <div className="absolute inset-0 opacity-15 bg-checkerboard bg-background z-10" />
+                      </div>
+                      <span className="dark:opacity-50">Add...</span>
                   </Button>
                 ) : (
                   <InputGroup>
                     <div className="w-full flex items-center justify-between gap-1 px-2.5">
                       <div className="flex items-center gap-2">
-                      <div className="size-4 rounded shrink-0" style={{ backgroundColor: borderColor || '#000000' }} />
+                        <div className="size-5 rounded-[6px] shrink-0 -ml-1 relative overflow-hidden outline dark:outline-white/10 outline-offset-[-1px]">
+                          <div className="absolute inset-0 z-20" style={{ background: parseBorderColorToCss(borderColor) }} />
+                          <div className="absolute inset-0 opacity-15 bg-checkerboard bg-background z-10" />
+                        </div>
+
                         <Label variant="muted" className="capitalize">{borderStyle || 'Solid'}</Label>
                       </div>
                       <Button
