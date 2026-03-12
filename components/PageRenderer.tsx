@@ -54,7 +54,6 @@ interface PageRendererProps {
   isPreview?: boolean;
   translations?: Record<string, any> | null;
   gaMeasurementId?: string | null;
-  globalCustomCodeHead?: string | null;
   globalCustomCodeBody?: string | null;
   ycodeBadge?: boolean;
   passwordProtection?: PasswordProtectionContext;
@@ -94,7 +93,6 @@ export default async function PageRenderer({
   isPreview = false,
   translations,
   gaMeasurementId,
-  globalCustomCodeHead,
   globalCustomCodeBody,
   ycodeBadge = true,
   passwordProtection,
@@ -196,12 +194,7 @@ export default async function PageRenderer({
   }
 
   // Extract custom code from page settings and resolve placeholders for dynamic pages
-  const rawPageCustomCodeHead = page.settings?.custom_code?.head || '';
   const rawPageCustomCodeBody = page.settings?.custom_code?.body || '';
-
-  const pageCustomCodeHead = page.is_dynamic && collectionItem
-    ? resolveCustomCodePlaceholders(rawPageCustomCodeHead, collectionItem, collectionFields)
-    : rawPageCustomCodeHead;
 
   const pageCustomCodeBody = page.is_dynamic && collectionItem
     ? resolveCustomCodePlaceholders(rawPageCustomCodeBody, collectionItem, collectionFields)
@@ -323,16 +316,6 @@ export default async function PageRenderer({
             }}
           />
         </>
-      )}
-
-      {/* Inject global custom head code (applies to all pages) */}
-      {globalCustomCodeHead && (
-        <div dangerouslySetInnerHTML={{ __html: globalCustomCodeHead }} />
-      )}
-
-      {/* Inject page-specific custom head code */}
-      {pageCustomCodeHead && (
-        <div dangerouslySetInnerHTML={{ __html: pageCustomCodeHead }} />
       )}
 
       {/* Apply body layer classes to <body> synchronously before paint */}
