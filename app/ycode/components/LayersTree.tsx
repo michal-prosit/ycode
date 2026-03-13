@@ -65,9 +65,10 @@ function getLayerDisplayLabel(
   },
   breakpoint?: Breakpoint
 ): string {
-  // For text content layers, skip customName early return if it matches the default block name
-  // so we can show actual text content instead
-  const isTextLayer = isTextContentLayer(layer) || isRichTextLayer(layer);
+  // For text content layers (heading/text), skip customName early return if it matches
+  // the default block name so we can show actual text content instead.
+  // Rich Text parent elements always use their static label.
+  const isTextLayer = isTextContentLayer(layer);
   const hasUserRename = layer.customName && layer.customName !== (getBlockName(layer.name) || '');
 
   if (hasUserRename) {
