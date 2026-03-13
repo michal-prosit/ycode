@@ -57,6 +57,7 @@ import LinkSettings, { type LinkSettingsValue } from './LinkSettings';
 import ComponentInstanceSidebar from './ComponentInstanceSidebar';
 import ComponentVariableOverrides from './ComponentVariableOverrides';
 import ExpandableRichTextEditor from './ExpandableRichTextEditor';
+import RichTextEditor from './RichTextEditor';
 import ComponentVariableLabel, { VARIABLE_TYPE_ICONS } from './ComponentVariableLabel';
 import InteractionsPanel from './InteractionsPanel';
 import LayoutControls from './LayoutControls';
@@ -2073,17 +2074,16 @@ const RightSidebar = React.memo(function RightSidebar({
                           <EmptyDescription>You are editing the text directly on canvas.</EmptyDescription>
                         </Empty>
                       ) : isTextLayer(selectedLayer) ? (
-                        <Textarea
+                        <RichTextEditor
                           key={selectedLayerId}
-                          defaultValue={(() => {
-                            const val = getContentValue(selectedLayer);
-                            if (val && typeof val === 'object') return extractPlainTextFromTiptap(val);
-                            return typeof val === 'string' ? val : '';
-                          })()}
-                          onChange={(e) => handleContentChange(getTiptapTextContent(e.target.value))}
+                          value={getContentValue(selectedLayer)}
+                          onChange={handleContentChange}
                           placeholder="Enter text..."
-                          className="min-h-8 resize-y"
-                          rows={1}
+                          withFormatting={true}
+                          showFormattingToolbar={false}
+                          fieldGroups={fieldGroups}
+                          allFields={fields}
+                          collections={collections}
                         />
                       ) : (
                         <ExpandableRichTextEditor
