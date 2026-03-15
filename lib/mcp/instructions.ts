@@ -57,6 +57,8 @@ Each layer has:
 
 **Utility**:
 - \`htmlEmbed\` — Custom HTML/CSS/JS code block
+- \`slider\` — Image/content carousel with slides, navigation arrows, pagination, and autoplay
+- \`lightbox\` — Fullscreen image gallery overlay with thumbnails, navigation, and zoom
 - \`hr\` — Horizontal divider
 
 ### Nesting Rules

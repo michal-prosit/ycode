@@ -86,6 +86,8 @@ export function registerReferenceResources(server: McpServer) {
             },
             utility: {
               htmlEmbed: 'Custom HTML/CSS/JS code.',
+              slider: 'Image/content carousel with navigation, pagination, and autoplay. Comes with 3 slides.',
+              lightbox: 'Fullscreen image gallery overlay with thumbnails, navigation, and zoom.',
             },
           },
         }, null, 2),

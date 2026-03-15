@@ -6,6 +6,7 @@
 import type { Layer, DesignProperties } from '@/types';
 import { generateId } from '@/lib/utils';
 import { designToClassString } from '@/lib/tailwind-class-mapper';
+import { getLayerFromTemplate } from '@/lib/templates/blocks';
 
 export { generateId } from '@/lib/utils';
 export { designToClassString } from '@/lib/tailwind-class-mapper';
@@ -264,7 +265,23 @@ function textLayerTemplate(
   };
 }
 
-export const ELEMENT_TEMPLATES: Record<string, { name: string; description: string; template: Omit<Layer, 'id'> }> = {
+interface InlineTemplate {
+  name: string;
+  description: string;
+  template: Omit<Layer, 'id'>;
+  useBlocksTemplate?: never;
+}
+
+interface BlocksTemplate {
+  name: string;
+  description: string;
+  template?: never;
+  useBlocksTemplate: true;
+}
+
+type ElementTemplateEntry = InlineTemplate | BlocksTemplate;
+
+export const ELEMENT_TEMPLATES: Record<string, ElementTemplateEntry> = {
   div: {
     name: 'Block',
     description: 'Generic container element (div)',
@@ -482,6 +499,16 @@ export const ELEMENT_TEMPLATES: Record<string, { name: string; description: stri
       },
     },
   },
+  slider: {
+    name: 'Slider',
+    description: 'Image/content slider (carousel) with navigation arrows, pagination bullets, and configurable autoplay. Comes with 3 default slides.',
+    useBlocksTemplate: true,
+  },
+  lightbox: {
+    name: 'Lightbox',
+    description: 'Lightbox overlay for viewing images in a fullscreen gallery with navigation, thumbnails, and zoom.',
+    useBlocksTemplate: true,
+  },
 };
 
 export function createLayerFromTemplate(
@@ -490,6 +517,12 @@ export function createLayerFromTemplate(
 ): Layer | null {
   const entry = ELEMENT_TEMPLATES[templateKey];
   if (!entry) return null;
+
+  // Complex composite elements (slider, lightbox) use the full blocks template system
+  if (entry.useBlocksTemplate) {
+    const layer = getLayerFromTemplate(templateKey, overrides?.customName ? { customName: overrides.customName } : undefined);
+    return layer;
+  }
 
   const assignIds = (layerData: Omit<Layer, 'id'> & { id?: string }): Layer => {
     const layer = { ...layerData, id: generateId('lyr') } as Layer;

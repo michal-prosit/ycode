@@ -56,7 +56,7 @@ ELEMENT TYPES:
 - Media: image, video, audio, icon, iframe
 - Actions: button
 - Forms: form, input, textarea
-- Utilities: htmlEmbed
+- Utilities: htmlEmbed, slider, lightbox
 
 NESTING RULES:
 - Leaf elements (image, text, input, video, icon, etc.) CANNOT have children
