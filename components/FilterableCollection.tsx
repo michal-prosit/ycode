@@ -582,7 +582,7 @@ export default function FilterableCollection({
           abortRef.current = null;
         }
       });
-  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, paginationMode, updateEmptyStateElements, injectFilteredHTML]);
+  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, paginationMode, updateEmptyStateElements, injectFilteredHTML, collectionLayerClasses, collectionLayerTag]);
 
   const fetchFilteredRef = useRef(fetchFiltered);
   useEffect(() => { fetchFilteredRef.current = fetchFiltered; }, [fetchFiltered]);
