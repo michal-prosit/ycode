@@ -42,6 +42,7 @@ import { isFieldTypeCompatible, getAirtableFieldTypeLabel } from '@/lib/apps/air
 import { formatRelativeTime } from '@/lib/utils';
 import { getFieldIcon, getFieldTypeLabel } from '@/lib/collection-field-utils';
 import { airtableApi } from '@/lib/apps/airtable/client';
+import { ToastError } from '@/lib/toast-error';
 import type {
   AirtableConnection,
   AirtableBase,
@@ -454,7 +455,11 @@ export default function AirtableSettings({
       toast.success('Auto-sync successfully enabled');
       await refreshConnections();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to enable auto-sync');
+      if (error instanceof ToastError) {
+        toast.error(error.title, { description: error.description });
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Failed to enable auto-sync');
+      }
     }
   };
 

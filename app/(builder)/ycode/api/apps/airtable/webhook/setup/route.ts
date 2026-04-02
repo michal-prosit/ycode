@@ -30,11 +30,32 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
       request.nextUrl.origin;
+
     const notificationUrl = `${baseUrl}/api/airtable-webhook`;
 
     if (!notificationUrl.startsWith('https://')) {
       return noCache(
         { error: 'Webhook requires a public HTTPS URL. Set NEXT_PUBLIC_SITE_URL in your environment.' },
+        400
+      );
+    }
+
+    // Verify the webhook endpoint is reachable before registering with Airtable
+    try {
+      const ping = await fetch(notificationUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (ping.status === 401 || ping.status === 403) {
+        return noCache(
+          { error: 'Webhook URL is not publicly accessible', detail: 'Set NEXT_PUBLIC_SITE_URL to a public HTTPS URL.' },
+          400
+        );
+      }
+    } catch {
+      return noCache(
+        { error: 'Webhook URL is unreachable', detail: 'Ensure the app is deployed and publicly accessible.' },
         400
       );
     }

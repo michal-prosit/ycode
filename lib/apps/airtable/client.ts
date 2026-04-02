@@ -13,10 +13,16 @@ import type {
 const BASE = '/ycode/api/apps/airtable';
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 
+import { ToastError } from '@/lib/toast-error';
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const body = await res.json();
-  if (body.error) throw new Error(body.error);
+  if (body.error) {
+    throw body.detail
+      ? new ToastError(body.error, body.detail)
+      : new Error(body.error);
+  }
   return body.data as T;
 }
 
