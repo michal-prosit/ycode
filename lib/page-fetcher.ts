@@ -1839,6 +1839,7 @@ export async function resolveCollectionLayers(
           // Clone the collection layer for each item (design settings apply to each repeated item)
           // For each item, resolve nested collection layers with that item's values
           // Note: Pagination is now a sibling layer, not a child, so no filtering needed
+          const sortedItemIds = sortedItems.map(item => item.id);
           const clonedLayers: Layer[] = await Promise.all(
             sortedItems.map(async (item) => {
               // Apply CMS translations to item values before using them
@@ -1897,6 +1898,8 @@ export async function resolveCollectionLayers(
                 _collectionItemSlug: itemSlug,
                 // Store layer data map for layer-specific field resolution
                 _layerDataMap: updatedLayerDataMap,
+                // Store sorted collection item IDs for next/previous navigation (SSR only)
+                _collectionSortedItemIds: sortedItemIds,
               };
 
               // Remap all layer IDs in the subtree to make them unique per item
@@ -3952,6 +3955,7 @@ function layerToHtml(
         translations,
         anchorMap,
         layerDataMap: effectiveLayerDataMap,
+        sortedCollectionItems: layer._collectionSortedItemIds?.map(id => ({ id })),
       };
       textContent = renderTiptapToHtml(textVariable.data.content, layer.textStyles, componentRenderer, richTextLinkContext);
       isRichText = true;

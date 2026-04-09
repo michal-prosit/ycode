@@ -7,6 +7,8 @@ import type { ReferenceItemOption } from '@/lib/collection-field-utils';
 interface CollectionItemSelectOptionsProps {
   canUseCurrentPageItem: boolean;
   canUseCurrentCollectionItem: boolean;
+  canUseNextItem?: boolean;
+  canUsePreviousItem?: boolean;
   referenceItemOptions: ReferenceItemOption[];
   collectionItems: CollectionItemWithValues[];
   /** Fields for the linked page's collection, used to derive display names */
@@ -29,11 +31,13 @@ function getDisplayName(item: CollectionItemWithValues, collectionFields: Collec
 export default function LinkItemOptions({
   canUseCurrentPageItem,
   canUseCurrentCollectionItem,
+  canUseNextItem,
+  canUsePreviousItem,
   referenceItemOptions,
   collectionItems,
   collectionFields,
 }: CollectionItemSelectOptionsProps) {
-  const hasSpecialOptions = canUseCurrentPageItem || canUseCurrentCollectionItem || referenceItemOptions.length > 0;
+  const hasSpecialOptions = canUseCurrentPageItem || canUseCurrentCollectionItem || canUseNextItem || canUsePreviousItem || referenceItemOptions.length > 0;
 
   return (
     <>
@@ -48,6 +52,20 @@ export default function LinkItemOptions({
         <SelectItem value="current-collection">
           <div className="flex items-center gap-2">
             Current collection item
+          </div>
+        </SelectItem>
+      )}
+      {canUseNextItem && (
+        <SelectItem value="next-item">
+          <div className="flex items-center gap-2">
+            Next item
+          </div>
+        </SelectItem>
+      )}
+      {canUsePreviousItem && (
+        <SelectItem value="previous-item">
+          <div className="flex items-center gap-2">
+            Previous item
           </div>
         </SelectItem>
       )}

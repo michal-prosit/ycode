@@ -403,6 +403,8 @@ export interface Layer {
   _collectionItemId?: string;
   // SSR-only property for collection item slug (used for link URL building)
   _collectionItemSlug?: string;
+  // SSR-only property for sorted collection item IDs (used for next/previous navigation)
+  _collectionSortedItemIds?: string[];
   // SSR-only property for layer-specific collection data (layer_id -> field values map)
   _layerDataMap?: Record<string, Record<string, string>>;
   // SSR-only property for master component ID (for translation lookups)

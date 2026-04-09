@@ -247,6 +247,10 @@ export default function LinkSettings(props: LinkSettingsProps) {
   const canUseCurrentPageItem = isDynamicPage && isCurrentPageDynamic
     && !!currentPageCollectionId && currentPageCollectionId === targetPageCollectionId;
 
+  // Next/previous items use the same conditions as current-page
+  // (only available when on a dynamic collection page)
+  const canUseNextPreviousItems = canUseCurrentPageItem;
+
   // Check if the layer itself is a collection layer
   const isCollectionLayer = !!(layer && getCollectionVariable(layer));
 
@@ -903,6 +907,8 @@ export default function LinkSettings(props: LinkSettingsProps) {
                     <LinkItemOptions
                       canUseCurrentPageItem={canUseCurrentPageItem}
                       canUseCurrentCollectionItem={canUseCurrentCollectionItem}
+                      canUseNextItem={canUseNextPreviousItems}
+                      canUsePreviousItem={canUseNextPreviousItems}
                       referenceItemOptions={referenceItemOptions}
                       collectionItems={collectionItems}
                       collectionFields={linkedPageCollectionFields}

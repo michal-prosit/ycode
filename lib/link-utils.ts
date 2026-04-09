@@ -237,6 +237,8 @@ export interface LinkResolutionContext {
   resolvedAssets?: Record<string, { url: string; width?: number | null; height?: number | null }>;
   /** Map of layer ID → item data for layer-specific field resolution */
   layerDataMap?: Record<string, Record<string, string>>;
+  /** Sorted collection items for next/previous navigation (available during SSR) */
+  sortedCollectionItems?: Array<{ id: string }>;
 }
 
 /**
@@ -418,6 +420,7 @@ export function generateLinkHref(
     translations,
     getAsset,
     anchorMap,
+    sortedCollectionItems,
   } = context;
 
   let href = '';
@@ -474,6 +477,23 @@ export function generateLinkHref(
                 collectionItemData
               );
               itemSlug = refItemId ? collectionItemSlugs[refItemId] : undefined;
+            } else if (linkSettings.page.collection_item_id === 'next-item' || linkSettings.page.collection_item_id === 'previous-item') {
+              // Navigate to next or previous item in the collection
+              // sortedCollectionItems is available during SSR when rendering collection items
+              if (sortedCollectionItems && pageCollectionItemId) {
+                const currentIndex = sortedCollectionItems.findIndex(item => item.id === pageCollectionItemId);
+                if (currentIndex !== -1) {
+                  const isNext = linkSettings.page.collection_item_id === 'next-item';
+                  const targetIndex = isNext ? currentIndex + 1 : currentIndex - 1;
+                  
+                  // Only set slug if target item exists (within bounds)
+                  if (targetIndex >= 0 && targetIndex < sortedCollectionItems.length) {
+                    const targetItem = sortedCollectionItems[targetIndex];
+                    itemSlug = collectionItemSlugs?.[targetItem.id];
+                  }
+                  // If out of bounds, itemSlug stays undefined, resulting in no href
+                }
+              }
             } else {
               // Use the specific item slug
               itemSlug = collectionItemSlugs[linkSettings.page.collection_item_id];
