@@ -166,6 +166,129 @@ export const structureTemplates: Record<string, BlockTemplate> = {
     }
   },
 
+  table: {
+    icon: 'table',
+    name: 'Table',
+    template: {
+      name: 'table',
+      classes: ['w-[100%]', 'border-collapse'],
+      children: [
+        {
+          name: 'thead',
+          children: [
+            {
+              name: 'tr',
+              children: [
+                {
+                  name: 'th',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]', 'text-left', 'font-semibold'],
+                  variables: { text: 'Header' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                    typography: { isActive: true, fontWeight: '600', textAlign: 'left' },
+                  },
+                },
+                {
+                  name: 'th',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]', 'text-left', 'font-semibold'],
+                  variables: { text: 'Header' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                    typography: { isActive: true, fontWeight: '600', textAlign: 'left' },
+                  },
+                },
+                {
+                  name: 'th',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]', 'text-left', 'font-semibold'],
+                  variables: { text: 'Header' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                    typography: { isActive: true, fontWeight: '600', textAlign: 'left' },
+                  },
+                },
+              ] as any[],
+            },
+          ] as any[],
+        },
+        {
+          name: 'tbody',
+          children: [
+            {
+              name: 'tr',
+              children: [
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+              ] as any[],
+            },
+            {
+              name: 'tr',
+              children: [
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+                {
+                  name: 'td',
+                  classes: ['border-[1px]', 'border-[#e5e7eb]', 'p-[8px]'],
+                  variables: { text: 'Cell' },
+                  design: {
+                    borders: { isActive: true, borderWidth: '1px', borderColor: '#e5e7eb' },
+                    spacing: { isActive: true, padding: '8px' },
+                  },
+                },
+              ] as any[],
+            },
+          ] as any[],
+        },
+      ] as any[],
+      design: {
+        sizing: { isActive: true, width: '100%' },
+      },
+    },
+  },
+
   collection: {
     icon: 'database',
     name: 'Collection',

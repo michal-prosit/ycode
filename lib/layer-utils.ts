@@ -606,6 +606,7 @@ const SUBLAYER_ICON_MAP: Record<string, string> = {
   richTextComponent: 'component',
   richTextImage: 'image',
   horizontalRule: 'separator',
+  table: 'table',
 };
 
 /**
@@ -621,6 +622,7 @@ export function contentBlockToStyleKey(block: { type: string; attrs?: Record<str
     case 'blockquote': return 'blockquote';
     case 'richTextImage': return 'richTextImage';
     case 'horizontalRule': return 'horizontalRule';
+    case 'table': return 'table';
     default: return null;
   }
 }
@@ -725,6 +727,7 @@ function buildSublayersFromDoc(doc: any, layer: Layer): RichTextSublayer[] {
         richTextImage: 'Image',
         codeBlock: 'Code Block',
         horizontalRule: 'Separator',
+        table: 'Table',
       };
 
       const textContent = extractBlockText(block).trim();
@@ -733,6 +736,14 @@ function buildSublayersFromDoc(doc: any, layer: Layer): RichTextSublayer[] {
         : (SUBLAYER_FALLBACK_MAP[type] || type);
 
       const children: RichTextSublayer[] = [];
+
+      if (type === 'table') {
+        children.push(
+          { type: 'tableHeader', label: 'Table Header Cell', icon: 'table-cell', kind: 'style' as const, styleKey: 'tableHeader' },
+          { type: 'tableCell', label: 'Table Cell', icon: 'table-cell', kind: 'style' as const, styleKey: 'tableCell' },
+          { type: 'tableRow', label: 'Table Row', icon: 'table-row', kind: 'style' as const, styleKey: 'tableRow' },
+        );
+      }
 
       const isList = type === 'bulletList' || type === 'orderedList';
       if (isList && block.content && Array.isArray(block.content)) {
@@ -768,9 +779,10 @@ function buildSublayersFromDoc(doc: any, layer: Layer): RichTextSublayer[] {
           });
         });
 
+      const isTable = type === 'table';
       return {
         type, kind: 'content' as const, icon,
-        label: isList ? (SUBLAYER_FALLBACK_MAP[type] || type) : label,
+        label: (isList || isTable) ? (SUBLAYER_FALLBACK_MAP[type] || type) : label,
         styleKey: contentBlockToStyleKey(block) ?? undefined,
         children: children.length > 0 ? children : undefined,
       };
@@ -796,6 +808,12 @@ const STYLE_SUBLAYER_ICON_MAP: Record<string, string> = {
   blockquote: 'quote',
   richTextImage: 'image',
   horizontalRule: 'separator',
+  table: 'table',
+  tableHead: 'table',
+  tableBody: 'table',
+  tableHeader: 'table-cell',
+  tableCell: 'table-cell',
+  tableRow: 'table-row',
 };
 
 /** Inline mark style keys shown for all text layers */
@@ -1556,6 +1574,14 @@ const LAYER_NAME_TO_HTML_TAG: Record<string, string> = {
 
   // Structure (valid HTML tags — pass through via fallback)
   // div, section, form, button, hr, iframe, input, textarea, select
+
+  // Table
+  table: 'table',
+  thead: 'thead',
+  tbody: 'tbody',
+  tr: 'tr',
+  td: 'td',
+  th: 'th',
 
   // Embedded / special
   htmlEmbed: 'div',

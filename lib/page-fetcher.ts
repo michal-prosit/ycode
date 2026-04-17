@@ -1390,7 +1390,7 @@ function resolveRichTextVariables(
       n?.type === 'paragraph' || n?.type === 'heading' ||
       n?.type === 'bulletList' || n?.type === 'orderedList' ||
       n?.type === 'richTextComponent' || n?.type === 'richTextImage' ||
-      n?.type === 'horizontalRule';
+      n?.type === 'table' || n?.type === 'horizontalRule';
     const hasBlockChildren = result.content.some(isBlockNode);
     if (hasBlockChildren) {
       const lifted: any[] = [];
@@ -3264,6 +3264,73 @@ function renderTiptapToHtml(
       );
     }
     return `<div data-component-id="${escapeHtml(content.attrs.componentId)}"></div>`;
+  }
+
+  // Handle table blocks — split rows into thead/tbody to match browser DOM
+  if (content.type === 'table') {
+    const rows = content.content || [];
+    const headerHtml: string[] = [];
+    const bodyHtml: string[] = [];
+
+    for (const row of rows) {
+      const isHeaderRow = row.type === 'tableRow' &&
+        row.content?.some((cell: any) => cell.type === 'tableHeader');
+      const rowHtml = renderTiptapToHtml(row, textStyles, renderComponentHtml, linkContext);
+      if (isHeaderRow) {
+        headerHtml.push(rowHtml);
+      } else {
+        bodyHtml.push(rowHtml);
+      }
+    }
+
+    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
+    const tableClass = mergedStyles?.table?.classes || '';
+    const classAttr = tableClass ? ` class="${escapeHtml(tableClass)}"` : '';
+
+    let inner = '';
+    if (headerHtml.length > 0) {
+      const theadClass = mergedStyles?.tableHead?.classes || '';
+      const theadAttr = theadClass ? ` class="${escapeHtml(theadClass)}"` : '';
+      inner += `<thead${theadAttr}>${headerHtml.join('')}</thead>`;
+    }
+    if (bodyHtml.length > 0) {
+      const tbodyClass = mergedStyles?.tableBody?.classes || '';
+      const tbodyAttr = tbodyClass ? ` class="${escapeHtml(tbodyClass)}"` : '';
+      inner += `<tbody${tbodyAttr}>${bodyHtml.join('')}</tbody>`;
+    }
+    return `<table${classAttr}>${inner}</table>`;
+  }
+
+  if (content.type === 'tableRow') {
+    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
+    const rowClass = mergedStyles?.tableRow?.classes || '';
+    const rowClassAttr = rowClass ? ` class="${escapeHtml(rowClass)}"` : '';
+    const cells = (content.content || [])
+      .map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext))
+      .join('');
+    return `<tr${rowClassAttr}>${cells}</tr>`;
+  }
+
+  if (content.type === 'tableCell' || content.type === 'tableHeader') {
+    const tag = content.type === 'tableHeader' ? 'th' : 'td';
+    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
+    const cellStyleKey = content.type === 'tableHeader' ? 'tableHeader' : 'tableCell';
+    const cellClass = mergedStyles?.[cellStyleKey]?.classes || '';
+    const attrs: string[] = [];
+    if (cellClass) {
+      attrs.push(`class="${escapeHtml(cellClass)}"`);
+    }
+    if (content.attrs?.colspan && content.attrs.colspan > 1) {
+      attrs.push(`colspan="${content.attrs.colspan}"`);
+    }
+    if (content.attrs?.rowspan && content.attrs.rowspan > 1) {
+      attrs.push(`rowspan="${content.attrs.rowspan}"`);
+    }
+    const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+    const cellContent = (content.content || [])
+      .map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext))
+      .join('');
+    return `<${tag}${attrStr}>${cellContent}</${tag}>`;
   }
 
   // Fallback: recursively process content
