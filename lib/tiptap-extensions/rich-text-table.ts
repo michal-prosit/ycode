@@ -24,12 +24,12 @@ export const RichTextTable = Table.extend({
       ...this.parent?.(),
       insertRichTextTable:
         ({ rows = 3, cols = 3, withHeaderRow = true } = {}) =>
-          ({ editor }) => {
-            return editor.commands.insertTable({ rows, cols, withHeaderRow });
+          ({ commands }) => {
+            return commands.insertTable({ rows, cols, withHeaderRow });
           },
       toggleCurrentRowHeader:
         () =>
-          ({ state, dispatch }) => {
+          ({ state, tr, dispatch }) => {
             const { selection, schema } = state;
             const $pos = selection.$from;
 
@@ -59,9 +59,8 @@ export const RichTextTable = Table.extend({
 
             if (!dispatch) return true;
 
-            const tr = state.tr;
             let offset = 0;
-            row.forEach((cell, cellOffset) => {
+            row.forEach((cell) => {
               if (cell.type !== targetType) {
                 const pos = rowStart + offset;
                 tr.setNodeMarkup(pos, targetType, cell.attrs);
@@ -69,7 +68,6 @@ export const RichTextTable = Table.extend({
               offset += cell.nodeSize;
             });
 
-            dispatch(tr);
             return true;
           },
     };
