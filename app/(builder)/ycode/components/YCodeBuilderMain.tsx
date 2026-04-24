@@ -589,7 +589,22 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
       }
     } else if (routeType === 'collections-base') {
       // On base collections route, don't set a selected collection
-    } else if (routeType === 'component' && resourceId && !isExitingComponentModeRef.current) {
+    }
+
+    // Ensure a currentPageId is set on non-design routes (CMS, Forms) so
+    // preview can navigate to a page — default to homepage if unset
+    if (!currentPageId && pages.length > 0) {
+      const isNonDesignRoute = routeType === 'collection' || routeType === 'collections-base' || routeType === 'forms';
+      if (isNonDesignRoute) {
+        const homePage = findHomepage(pages);
+        const defaultPage = homePage || pages[0];
+        if (defaultPage) {
+          setCurrentPageId(defaultPage.id);
+        }
+      }
+    }
+
+    if (routeType === 'component' && resourceId && !isExitingComponentModeRef.current) {
       const { getComponentById, loadComponentDraft } = useComponentsStore.getState();
       const component = getComponentById(resourceId);
       if (component && editingComponentId !== resourceId) {
