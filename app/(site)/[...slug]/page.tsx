@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { buildSlugPath } from '@/lib/page-utils';
 import { generatePageMetadata, fetchGlobalPageSettings } from '@/lib/generate-page-metadata';
-import { fetchPageByPath, fetchPageByPathForMetadata, fetchErrorPage, slimPageData } from '@/lib/page-fetcher';
+import { fetchPageByPath, fetchPageByPathForMetadata, fetchErrorPage, splitPageData, reassemblePageData, slimPageData } from '@/lib/page-fetcher';
 import PageRenderer from '@/components/PageRenderer';
 import PasswordForm from '@/components/PasswordForm';
 import { getSettingByKey } from '@/lib/repositories/settingsRepository';
@@ -149,45 +149,40 @@ export async function generateStaticParams() {
  * Cached per slug and page for revalidation
  */
 async function fetchPublishedPageWithLayers(slugPath: string) {
-  try {
-    return await unstable_cache(
+  const tags = ['all-pages', `route-/${slugPath}`];
+  const opts = { tags, revalidate: false as const };
+
+  const [core, layers] = await Promise.all([
+    unstable_cache(
       async () => {
         const data = await fetchPageByPath(slugPath, true);
-        return data ? slimPageData(data) : null;
+        if (!data) return null;
+        return splitPageData(data).core;
       },
-      [`data-for-route-/${slugPath}`],
-      {
-        tags: ['all-pages', `route-/${slugPath}`],
-        revalidate: false,
-      }
-    )();
-  } catch {
-    // Fallback to uncached fetch when data exceeds cache size limit (2MB)
-    try {
-      return await fetchPageByPath(slugPath, true);
-    } catch {
-      return null;
-    }
-  }
+      [`core-/${slugPath}`],
+      opts
+    )(),
+    unstable_cache(
+      async () => {
+        const data = await fetchPageByPath(slugPath, true);
+        if (!data) return null;
+        return splitPageData(data).layers;
+      },
+      [`layers-/${slugPath}`],
+      opts
+    )(),
+  ]);
+
+  if (!core) return null;
+  return reassemblePageData(core, layers || []);
 }
 
 async function fetchPublishedPageForMetadata(slugPath: string) {
-  try {
-    return await unstable_cache(
-      async () => fetchPageByPathForMetadata(slugPath, true),
-      [`metadata-for-route-/${slugPath}`],
-      {
-        tags: ['all-pages', `route-/${slugPath}`],
-        revalidate: false,
-      }
-    )();
-  } catch {
-    try {
-      return await fetchPageByPathForMetadata(slugPath, true);
-    } catch {
-      return null;
-    }
-  }
+  return unstable_cache(
+    async () => fetchPageByPathForMetadata(slugPath, true),
+    [`metadata-/${slugPath}`],
+    { tags: ['all-pages', `route-/${slugPath}`], revalidate: false }
+  )();
 }
 
 async function fetchCachedRedirects(): Promise<RedirectType[] | null> {
@@ -238,18 +233,14 @@ async function fetchCachedFoldersForAuth() {
 }
 
 async function fetchCachedErrorPage(errorCode: 401 | 404) {
-  try {
-    return await unstable_cache(
-      async () => {
-        const data = await fetchErrorPage(errorCode, true);
-        return data ? slimPageData(data) : null;
-      },
-      [`data-for-error-page-${errorCode}`],
-      { tags: ['all-pages'], revalidate: false }
-    )();
-  } catch {
-    return null;
-  }
+  return unstable_cache(
+    async () => {
+      const data = await fetchErrorPage(errorCode, true);
+      return data ? slimPageData(data) : null;
+    },
+    [`error-${errorCode}`],
+    { tags: ['all-pages'], revalidate: false }
+  )();
 }
 
 interface PageProps {
@@ -307,7 +298,7 @@ export default async function Page({ params }: PageProps) {
     notFound();
   }
 
-  const { page, pageLayers, components, collectionItem, collectionFields, locale, availableLocales, translations } = data;
+  const { page, pageLayers, components, collectionItem, collectionFields, pageCollectionSortedItemIds, pageCollectionSortedItemSlugs, locale, availableLocales, translations } = data;
 
   // Check password protection for this page.
   // First evaluate without cookies() so non-protected pages stay cacheable.
@@ -372,6 +363,8 @@ export default async function Page({ params }: PageProps) {
       colorVariablesCss={globalSettings.colorVariablesCss || undefined}
       collectionItem={collectionItem}
       collectionFields={collectionFields}
+      pageCollectionSortedItemIds={pageCollectionSortedItemIds}
+      pageCollectionSortedItemSlugs={pageCollectionSortedItemSlugs}
       locale={locale}
       availableLocales={availableLocales}
       translations={translations}

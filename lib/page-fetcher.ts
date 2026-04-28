@@ -23,7 +23,7 @@ export interface PaginationContext {
   defaultPage?: number;
 }
 
-import { resolveFieldLinkValue, resolveRefCollectionItemId, generateLinkHref } from '@/lib/link-utils';
+import { resolveFieldLinkValue, resolveRefCollectionItemId, generateLinkHref, isLinkAtCollectionBoundary } from '@/lib/link-utils';
 import type { LinkResolutionContext } from '@/lib/link-utils';
 import { getLinkSettingsFromMark } from '@/lib/tiptap-extensions/rich-text-link';
 import { SWIPER_CLASS_MAP, SWIPER_DATA_ATTR_MAP } from '@/lib/templates/utilities';
@@ -78,6 +78,19 @@ export interface PageData {
   components: Component[];
   collectionItem?: CollectionItemWithValues; // For dynamic pages
   collectionFields?: CollectionField[]; // For dynamic pages
+  /**
+   * Ordered ids of every item in the dynamic page's collection, sorted by
+   * `manual_order` ASC. Used to resolve `next-item` / `previous-item` link
+   * keywords. Only set for dynamic pages.
+   */
+  pageCollectionSortedItemIds?: string[];
+  /**
+   * Map of `collection_item_id -> slug` for every item in
+   * `pageCollectionSortedItemIds`. PageRenderer merges this into its slug
+   * lookup so next/previous links can resolve to the correct URL even when
+   * the neighbouring items are not otherwise referenced on the page.
+   */
+  pageCollectionSortedItemSlugs?: Record<string, string>;
   locale?: Locale | null; // Current locale (if detected from URL)
   availableLocales?: Locale[]; // All active locales for locale switcher
   translations?: Record<string, Translation>; // Translations for locale-aware URL generation
@@ -96,6 +109,54 @@ export function slimPageData(data: PageData): PageData {
     pageLayers: { layers: data.pageLayers.layers || [] } as PageLayers,
     components: data.components.map(({ layers, ...rest }) => ({ ...rest, layers: [] }) as Component),
   };
+}
+
+export type PageDataCore = Omit<PageData, 'pageLayers'>;
+
+export function splitPageData(data: PageData): { core: PageDataCore; layers: Layer[] } {
+  const slimmed = slimPageData(data);
+  const { pageLayers, ...core } = slimmed;
+  return { core, layers: pageLayers.layers || [] };
+}
+
+export function reassemblePageData(core: PageDataCore, layers: Layer[]): PageData {
+  return { ...core, pageLayers: { layers } as PageLayers };
+}
+
+/**
+ * Order collection items the same way next/previous navigation should walk
+ * them. When no setting is configured, falls back to the auto-generated
+ * `id`-keyed field sorted ascending (1 → N) — the same default the page-
+ * settings UI exposes. Field sorts compare numerically when both sides
+ * parse as numbers, otherwise locale string compare.
+ */
+function sortItemsForNextPrevious<T extends { id: string; manual_order: number; values: Record<string, string> }>(
+  items: T[],
+  collectionFields: CollectionField[],
+  settings?: { sort_by?: string; sort_order?: 'asc' | 'desc' }
+): T[] {
+  const idFieldId = collectionFields.find(f => f.key === 'id')?.id;
+  const sortBy = settings?.sort_by || idFieldId || 'manual';
+  const sortOrder = settings?.sort_order || 'asc';
+  const direction = sortOrder === 'desc' ? -1 : 1;
+
+  if (sortBy === 'manual') {
+    return [...items].sort((a, b) => (a.manual_order - b.manual_order) * direction);
+  }
+
+  return [...items].sort((a, b) => {
+    const aRaw = a.values[sortBy] ?? '';
+    const bRaw = b.values[sortBy] ?? '';
+    const aStr = String(aRaw);
+    const bStr = String(bRaw);
+    const aNum = aStr.trim() !== '' ? Number(aStr) : NaN;
+    const bNum = bStr.trim() !== '' ? Number(bStr) : NaN;
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      return (aNum - bNum) * direction;
+    }
+    return aStr.localeCompare(bStr) * direction;
+  });
 }
 
 /**
@@ -527,6 +588,40 @@ async function fetchPageByPathInternal(
             const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
             resolvedLayers = resolved.layers;
 
+            // Fetch the ordered list of ids + slugs for the page's collection
+            // so links using `next-item` / `previous-item` can resolve at
+            // render time. The sort is configurable per-page (CMS settings);
+            // the default is `manual_order ASC` to match other parts of the
+            // system. We grab values too so we can build a slug map — the
+            // neighbouring items are typically not referenced anywhere else
+            // on the page, so PageRenderer would otherwise have no way to
+            // resolve their URLs.
+            let pageCollectionSortedItemIds: string[] | undefined;
+            let pageCollectionSortedItemSlugs: Record<string, string> | undefined;
+            try {
+              const slugFieldId = collectionFields.find(f => f.key === 'slug')?.id;
+              const { items: fetchedItems } = await getItemsWithValues(
+                cmsSettings.collection_id,
+                isPublished
+              );
+              const orderedItems = sortItemsForNextPrevious(
+                fetchedItems,
+                collectionFields,
+                cmsSettings.next_previous
+              );
+              pageCollectionSortedItemIds = orderedItems.map(i => i.id);
+              if (slugFieldId) {
+                pageCollectionSortedItemSlugs = {};
+                for (const item of orderedItems) {
+                  const slug = item.values[slugFieldId];
+                  if (slug) pageCollectionSortedItemSlugs[item.id] = slug;
+                }
+              }
+            } catch (err) {
+              // Non-fatal: next/previous links will simply not resolve.
+              console.error('[fetchPageByPath] Failed to fetch collection item order:', err);
+            }
+
             return {
               page: matchingPage,
               pageLayers: {
@@ -536,6 +631,8 @@ async function fetchPageByPathInternal(
               components,
               collectionItem: enhancedCollectionItem,
               collectionFields,
+              pageCollectionSortedItemIds,
+              pageCollectionSortedItemSlugs,
               locale: detectedLocale,
               availableLocales: availableLocales as Locale[] || [],
               translations,
@@ -610,14 +707,14 @@ async function fetchPageByPathInternal(
   }
 }
 
-export async function fetchPageByPath(
+export const fetchPageByPath = cache(async function fetchPageByPath(
   slugPath: string,
   isPublished: boolean,
   paginationContext?: PaginationContext,
   tenantId?: string,
 ): Promise<PageData | null> {
   return fetchPageByPathInternal(slugPath, isPublished, paginationContext, tenantId, { resolveLayers: true });
-}
+});
 
 export async function fetchPageByPathForMetadata(
   slugPath: string,
@@ -3609,6 +3706,26 @@ function renderTiptapToHtml(
 }
 
 /**
+ * Page-level link resolution context passed through `layerToHtml`. Bundles
+ * data that's specific to the dynamic page being rendered (rather than to the
+ * cloned collection layer or current item), so layer-level link resolution
+ * can produce next/previous-style URLs and respect preview prefixes.
+ */
+interface PageLinkContext {
+  pageCollectionItemId?: string;
+  pageCollectionSortedItemIds?: string[];
+  isPreview?: boolean;
+}
+
+/** Build an `assetMap`-backed `getAsset` callback compatible with `generateLinkHref`. */
+function makeAssetMapResolver(
+  assetMap?: Record<string, { public_url: string | null; content?: string | null }>
+): ((id: string) => { public_url?: string | null; content?: string | null } | null) | undefined {
+  if (!assetMap) return undefined;
+  return (id: string) => assetMap[id] ?? null;
+}
+
+/**
  * Convert a Layer to HTML string
  * Handles common layer types and their attributes
  */
@@ -3628,13 +3745,14 @@ function layerToHtml(
   components?: Component[],
   ancestorComponentIds?: Set<string>,
   isSlideChild?: boolean,
+  pageLinkContext?: PageLinkContext,
 ): string {
   // Handle fragment layers (created by resolveCollectionLayers for nested collections)
   // Fragments render their children directly without a wrapper element
   if (layer.name === '_fragment' && layer.children) {
     return layer.children
       .map((child) =>
-        layerToHtml(child, collectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, collectionItemData, pageCollectionItemData, assetMap, layerDataMap, components, ancestorComponentIds, isSlideChild)
+        layerToHtml(child, collectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, collectionItemData, pageCollectionItemData, assetMap, layerDataMap, components, ancestorComponentIds, isSlideChild, pageLinkContext)
       )
       .join('');
   }
@@ -3886,7 +4004,7 @@ function layerToHtml(
       const childrenHtml = layer.children
         ? layer.children
           .map((child) =>
-            layerToHtml(child, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, ancestorComponentIds, layer.name === 'slides')
+            layerToHtml(child, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, ancestorComponentIds, layer.name === 'slides', pageLinkContext)
           )
           .join('')
         : '';
@@ -4019,111 +4137,39 @@ function layerToHtml(
     return `<iframe${attrsStr}></iframe>`;
   }
 
-  // Handle links (variables structure)
+  // Handle links (variables structure).
+  // All link types share the same resolver as React rendering — `generateLinkHref` —
+  // so behaviour stays consistent between SSR HTML output and client/published rendering.
   if (tag === 'a') {
     const linkSettings = layer.variables?.link;
     if (linkSettings) {
-      let hrefValue = '';
-
-      switch (linkSettings.type) {
-        case 'url':
-          if (linkSettings.url?.data?.content) {
-            hrefValue = linkSettings.url.data.content;
-          }
-          break;
-        case 'email':
-          if (linkSettings.email?.data?.content) {
-            hrefValue = `mailto:${linkSettings.email.data.content}`;
-          }
-          break;
-        case 'phone':
-          if (linkSettings.phone?.data?.content) {
-            hrefValue = `tel:${linkSettings.phone.data.content}`;
-          }
-          break;
-        case 'asset':
-          // Asset URLs should be resolved elsewhere (resolveAllAssets)
-          break;
-        case 'page':
-          // Resolve page URL using pages and folders
-          if (linkSettings.page?.id && pages && folders) {
-            const linkedPage = pages.find(p => p.id === linkSettings.page?.id);
-            if (linkedPage) {
-              // Check if this is a dynamic page with a specific collection item
-              if (linkedPage.is_dynamic && linkSettings.page.collection_item_id && collectionItemSlugs) {
-                let itemSlug: string | undefined;
-
-                // Handle special "current" keywords and reference field resolution
-                if (linkSettings.page.collection_item_id === 'current-page' ||
-                    linkSettings.page.collection_item_id === 'current-collection') {
-                  // Use the current collection item's slug (from effectiveCollectionItemId)
-                  itemSlug = effectiveCollectionItemId ? collectionItemSlugs[effectiveCollectionItemId] : undefined;
-                } else if (linkSettings.page.collection_item_id.startsWith('ref-')) {
-                  // Resolve via reference field value from current item data
-                  const refItemId = resolveRefCollectionItemId(
-                    linkSettings.page.collection_item_id,
-                    pageCollectionItemData,
-                    effectiveCollectionItemData
-                  );
-                  itemSlug = refItemId ? collectionItemSlugs[refItemId] : undefined;
-                } else {
-                  // Use the specific item slug
-                  itemSlug = collectionItemSlugs[linkSettings.page.collection_item_id];
-                }
-
-                // Use localized URL if locale is active
-                hrefValue = buildLocalizedDynamicPageUrl(linkedPage, folders, itemSlug || null, locale, translations);
-              } else {
-                // Static page or dynamic page without specific item
-                hrefValue = buildLocalizedSlugPath(linkedPage, folders, 'page', locale, translations);
-              }
-            }
-          }
-          break;
-        case 'field': {
-          const fieldId = linkSettings.field?.data?.field_id;
-          const collectionLayerId = linkSettings.field?.data?.collection_layer_id;
-          // Use layer-specific data if collection_layer_id is specified
-          let rawValue: string | undefined;
-          if (collectionLayerId && effectiveLayerDataMap?.[collectionLayerId]) {
-            rawValue = fieldId ? effectiveLayerDataMap[collectionLayerId][fieldId] : undefined;
-          } else {
-            rawValue = fieldId ? effectiveCollectionItemData?.[fieldId] : undefined;
-          }
-          if (fieldId && rawValue) {
-            const fieldType = linkSettings.field?.data?.field_type;
-            hrefValue = resolveFieldLinkValue({
-              fieldId,
-              rawValue,
-              fieldType,
-              context: {
-                pages: pages || [],
-                folders: folders || [],
-                collectionItemSlugs,
-                locale,
-                translations,
-                isPreview: false,
-              },
-              assetMap,
-            });
-          }
-          break;
-        }
-      }
-
-      // Append anchor if present (anchor_layer_id references a layer's ID attribute)
-      // Resolve layer ID to actual anchor value using pre-built map (O(1) lookup)
-      if (linkSettings.anchor_layer_id) {
-        const anchorValue = anchorMap?.[linkSettings.anchor_layer_id] || linkSettings.anchor_layer_id;
-        if (hrefValue) {
-          hrefValue = `${hrefValue}#${anchorValue}`;
-        } else {
-          hrefValue = `#${anchorValue}`;
-        }
-      }
+      const hrefValue = generateLinkHref(linkSettings, {
+        pages,
+        folders,
+        collectionItemSlugs,
+        collectionItemId: effectiveCollectionItemId,
+        pageCollectionItemId: pageLinkContext?.pageCollectionItemId,
+        collectionItemData: effectiveCollectionItemData,
+        pageCollectionItemData,
+        isPreview: pageLinkContext?.isPreview,
+        locale,
+        translations,
+        getAsset: makeAssetMapResolver(assetMap),
+        anchorMap,
+        layerDataMap: effectiveLayerDataMap,
+        pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
+      });
 
       if (hrefValue) {
         attrs.push(`href="${escapeHtml(hrefValue)}"`);
+      } else if (isLinkAtCollectionBoundary(linkSettings, {
+        pageCollectionItemId: pageLinkContext?.pageCollectionItemId,
+        pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
+      })) {
+        // First/last item in the collection: render as a non-navigable, accessible
+        // disabled affordance instead of a bare `<a>` with no href.
+        attrs.push('aria-disabled="true"');
+        attrs.push('data-link-disabled="true"');
       }
 
       // Link behavior attributes from linkSettings
@@ -4252,7 +4298,7 @@ function layerToHtml(
   const childrenHtml = effectiveChildren
     ? effectiveChildren
       .map((child) =>
-        layerToHtml(child, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, ancestorComponentIds, layer.name === 'slides')
+        layerToHtml(child, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, ancestorComponentIds, layer.name === 'slides', pageLinkContext)
       )
       .join('')
     : '';
@@ -4293,7 +4339,7 @@ function layerToHtml(
           const { css: rtcAnimCSS } = generateInitialAnimationCSS(withAssets);
           const rtcStyleTag = rtcAnimCSS ? `<style>${rtcAnimCSS}</style>` : '';
           return rtcStyleTag + withAssets
-            .map(l => layerToHtml(l, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, childAncestors, layer.name === 'slides'))
+            .map(l => layerToHtml(l, effectiveCollectionItemId, pages, folders, collectionItemSlugs, locale, translations, anchorMap, effectiveCollectionItemData, pageCollectionItemData, assetMap, effectiveLayerDataMap, components, childAncestors, layer.name === 'slides', pageLinkContext))
             .join('');
         }
         : undefined;
@@ -4302,12 +4348,16 @@ function layerToHtml(
         folders,
         collectionItemSlugs,
         collectionItemId: effectiveCollectionItemId,
+        pageCollectionItemId: pageLinkContext?.pageCollectionItemId,
         collectionItemData: effectiveCollectionItemData,
         pageCollectionItemData,
+        isPreview: pageLinkContext?.isPreview,
         locale,
         translations,
+        getAsset: makeAssetMapResolver(assetMap),
         anchorMap,
         layerDataMap: effectiveLayerDataMap,
+        pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
       };
       textContent = renderTiptapToHtml(textVariable.data.content, layer.textStyles, componentRenderer, richTextLinkContext);
       isRichText = true;
@@ -4319,73 +4369,41 @@ function layerToHtml(
   if (selfClosingTags.includes(tag)) {
     let selfClosingHtml = `<${tag} ${attrs.join(' ')} />`;
 
-    // Wrap with link if layer has link settings
+    // Wrap with link if layer has link settings.
+    // Reuse `generateLinkHref` so all link types — including dynamic-page
+    // collection_item_id keywords like `current-page` and `next-item` — work
+    // identically to layer `<a>` tags and React rendering.
     const linkSettings = layer.variables?.link;
     if (linkSettings && linkSettings.type) {
-      let linkHref = '';
+      const linkHref = generateLinkHref(linkSettings, {
+        pages,
+        folders,
+        collectionItemSlugs,
+        collectionItemId: effectiveCollectionItemId,
+        pageCollectionItemId: pageLinkContext?.pageCollectionItemId,
+        collectionItemData: effectiveCollectionItemData,
+        pageCollectionItemData,
+        isPreview: pageLinkContext?.isPreview,
+        locale,
+        translations,
+        getAsset: makeAssetMapResolver(assetMap),
+        anchorMap,
+        layerDataMap: effectiveLayerDataMap,
+        pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
+      });
 
-      switch (linkSettings.type) {
-        case 'url':
-          linkHref = linkSettings.url?.data?.content || '';
-          break;
-        case 'email':
-          linkHref = linkSettings.email?.data?.content ? `mailto:${linkSettings.email.data.content}` : '';
-          break;
-        case 'phone':
-          linkHref = linkSettings.phone?.data?.content ? `tel:${linkSettings.phone.data.content}` : '';
-          break;
-        case 'page':
-          if (linkSettings.page?.id && pages && folders) {
-            const linkedPage = pages.find(p => p.id === linkSettings.page?.id);
-            if (linkedPage) {
-              linkHref = buildLocalizedSlugPath(linkedPage, folders, 'page', locale, translations);
-            }
-          }
-          break;
-        case 'field': {
-          const fieldId = linkSettings.field?.data?.field_id;
-          const collectionLayerId = linkSettings.field?.data?.collection_layer_id;
-          // Use layer-specific data if collection_layer_id is specified
-          let rawValue: string | undefined;
-          if (collectionLayerId && effectiveLayerDataMap?.[collectionLayerId]) {
-            rawValue = fieldId ? effectiveLayerDataMap[collectionLayerId][fieldId] : undefined;
-          } else {
-            rawValue = fieldId ? effectiveCollectionItemData?.[fieldId] : undefined;
-          }
-          if (fieldId && rawValue) {
-            const fieldType = linkSettings.field?.data?.field_type;
-            linkHref = resolveFieldLinkValue({
-              fieldId,
-              rawValue,
-              fieldType,
-              context: {
-                pages: pages || [],
-                folders: folders || [],
-                collectionItemSlugs,
-                locale,
-                translations,
-                isPreview: false,
-              },
-              assetMap,
-            });
-          }
-          break;
-        }
-      }
+      const atBoundary = !linkHref && isLinkAtCollectionBoundary(linkSettings, {
+        pageCollectionItemId: pageLinkContext?.pageCollectionItemId,
+        pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
+      });
 
-      // Append anchor if present
-      if (linkSettings.anchor_layer_id) {
-        const anchorValue = anchorMap?.[linkSettings.anchor_layer_id] || linkSettings.anchor_layer_id;
+      if (linkHref || atBoundary) {
+        const linkAttrs: string[] = [];
         if (linkHref) {
-          linkHref = `${linkHref}#${anchorValue}`;
+          linkAttrs.push(`href="${escapeHtml(linkHref)}"`);
         } else {
-          linkHref = `#${anchorValue}`;
+          linkAttrs.push('aria-disabled="true"', 'data-link-disabled="true"');
         }
-      }
-
-      // Wrap in <a> tag if we have a valid href
-      if (linkHref) {
-        const linkAttrs: string[] = [`href="${escapeHtml(linkHref)}"`];
         const linkTarget = linkSettings.target;
         if (linkTarget) {
           linkAttrs.push(`target="${escapeHtml(linkTarget)}"`);
