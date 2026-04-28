@@ -844,7 +844,19 @@ export default function CollectionItemSheet({
                               return (
                                 <Select
                                   value={currentValue || '__none__'}
-                                  onValueChange={(value) => formField.onChange(value === '__none__' ? '' : value)}
+                                  onValueChange={(value) => {
+                                    // Radix Select renders a hidden native <select> for form
+                                    // integration that dispatches a spurious change event with
+                                    // an empty value when the controlled `value` prop changes
+                                    // externally (e.g. via form.reset) before the SelectItem
+                                    // for that value has registered (the items live in a
+                                    // Portal that mounts only when the select is open).
+                                    // Ignore that spurious empty change so it can't clobber
+                                    // the loaded form value. SelectItem disallows value="",
+                                    // so an empty string is never user-initiated.
+                                    if (value === '') return;
+                                    formField.onChange(value === '__none__' ? '' : value);
+                                  }}
                                   disabled={options.length === 0}
                                 >
                                   <SelectTrigger className="w-full">
