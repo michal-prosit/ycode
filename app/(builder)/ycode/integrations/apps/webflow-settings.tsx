@@ -31,6 +31,7 @@ import { Spinner } from '@/components/ui/spinner';
 
 import { webflowApi, type WebflowCollectionPreview } from '@/lib/apps/webflow/client';
 import { formatRelativeTime } from '@/lib/utils';
+import { useCollectionsStore } from '@/stores/useCollectionsStore';
 import type { WebflowImport, WebflowSite } from '@/lib/apps/webflow/types';
 
 // =============================================================================
@@ -79,6 +80,23 @@ export default function WebflowSettings({
 
   // Disconnect dialog
   const [showDisconnect, setShowDisconnect] = useState(false);
+
+  // CMS store — used to refresh the sidebar after migrate / re-sync.
+  const loadCollections = useCollectionsStore((s) => s.loadCollections);
+  const loadFields = useCollectionsStore((s) => s.loadFields);
+  const reloadCurrentItems = useCollectionsStore((s) => s.reloadCurrentItems);
+  const selectedCollectionId = useCollectionsStore((s) => s.selectedCollectionId);
+
+  /** Refresh the CMS store so the sidebar + open collection reflect new data. */
+  const refreshCmsStore = useCallback(async () => {
+    await loadCollections();
+    if (selectedCollectionId) {
+      await Promise.all([
+        loadFields(selectedCollectionId),
+        reloadCurrentItems(),
+      ]);
+    }
+  }, [loadCollections, loadFields, reloadCurrentItems, selectedCollectionId]);
 
   // =========================================================================
   // Load settings on mount
@@ -233,6 +251,9 @@ export default function WebflowSettings({
       setImports(refreshed.length > 0 ? refreshed : [...imports, importRecord]);
       setSelectedSiteId('');
       setPreview(null);
+
+      // Refresh CMS store so the new collections show up without a hard reload.
+      refreshCmsStore().catch(() => {});
     } catch (error) {
       toast.error('Migration failed', {
         id: toastId,
@@ -260,6 +281,9 @@ export default function WebflowSettings({
 
       const refreshed = await webflowApi.listImports().catch(() => imports);
       setImports(refreshed);
+
+      // Reload the open collection so updated items show immediately.
+      refreshCmsStore().catch(() => {});
     } catch (error) {
       toast.error('Re-sync failed', {
         id: toastId,
