@@ -33,6 +33,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import RichTextEditor from './RichTextEditor';
 import RichTextEditorSheet from './RichTextEditorSheet';
 import { useCollectionsStore } from '@/stores/useCollectionsStore';
@@ -828,6 +836,40 @@ export default function CollectionItemSheet({
                                 Value is set to <span className="text-foreground">{formField.value === 'true' ? 'YES' : 'NO'}</span>
                               </Label>
                             </div>
+                          ) : field.type === 'option' ? (
+                            (() => {
+                              const options = field.data?.options ?? [];
+                              const currentValue = formField.value || '';
+                              const hasMatchingOption = options.some(o => o.name.trim() === currentValue);
+                              return (
+                                <Select
+                                  value={currentValue || '__none__'}
+                                  onValueChange={(value) => formField.onChange(value === '__none__' ? '' : value)}
+                                  disabled={options.length === 0}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder={options.length === 0 ? 'No options available' : `Select ${field.name.toLowerCase()}...`} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      <SelectItem value="__none__">None</SelectItem>
+                                      {options
+                                        .filter(o => o.name.trim().length > 0)
+                                        .map((option) => (
+                                          <SelectItem key={option.id} value={option.name.trim()}>
+                                            {option.name.trim()}
+                                          </SelectItem>
+                                        ))}
+                                      {currentValue && !hasMatchingOption && (
+                                        <SelectItem value={currentValue} disabled>
+                                          {currentValue} (deleted)
+                                        </SelectItem>
+                                      )}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              );
+                            })()
                           ) : field.key === 'name' ? (
                             <Input
                               ref={nameInputRef}
