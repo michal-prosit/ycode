@@ -96,6 +96,7 @@ export default function WelcomePage() {
   const [serviceRoleKey, setServiceRoleKey] = useState(supabaseConfig?.serviceRoleKey || '');
   const [connectionUrl, setConnectionUrl] = useState(supabaseConfig?.connectionUrl || '');
   const [dbPassword, setDbPassword] = useState(supabaseConfig?.dbPassword || '');
+  const [supabaseUrl, setSupabaseUrl] = useState(supabaseConfig?.supabaseUrl || '');
 
   // Email confirmation setting check
   const [emailConfirmDisabled, setEmailConfirmDisabled] = useState(false);
@@ -304,7 +305,7 @@ export default function WelcomePage() {
 
                 <FieldSet>
 
-                  <FieldLegend>Add 4 environment variables in Vercel</FieldLegend>
+                  <FieldLegend>Add environment variables in Vercel</FieldLegend>
                   <FieldDescription>Go to <span className="text-white/85">Vercel Dashboard</span> → <span className="text-white/85">Your Project</span> → <span className="text-white/85">Settings</span> → <span className="text-white/85">Environment Variables</span>. Add to all environments (Production, Preview, Development).</FieldDescription>
 
                   <FieldGroup className="mt-2">
@@ -401,6 +402,29 @@ export default function WelcomePage() {
                       </FieldDescription>
                     </Field>
 
+                    <Field>
+                      <InputGroup size="sm">
+                        <InputGroupInput
+                          value="SUPABASE_URL" size="sm"
+                          readOnly
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            className="mr-1"
+                            onClick={() => handleCopy('SUPABASE_URL', 'supabaseurl')}
+                          >
+                            <Icon name={copiedField === 'supabaseurl' ? 'check' : 'copy'} />
+                            {copiedField === 'supabaseurl' ? 'Copied' : 'Copy'}
+                          </Button>
+                        </InputGroupAddon>
+                      </InputGroup>
+                      <FieldDescription>
+                        <span className="text-white/85">Optional</span> — only needed for self-hosted Supabase instances. Set to your Supabase API URL (e.g. <span className="text-white/85">https://supabase.my-company.com</span>).
+                      </FieldDescription>
+                    </Field>
+
                   </FieldGroup>
 
                 </FieldSet>
@@ -456,6 +480,7 @@ export default function WelcomePage() {
           serviceRoleKey,
           connectionUrl,
           dbPassword,
+          ...(supabaseUrl ? { supabaseUrl } : {}),
         };
 
         try {
@@ -564,7 +589,7 @@ export default function WelcomePage() {
                       </Field>
 
                       <Field>
-                        <FieldLabel htmlFor="connection_url" size="sm">Database Password</FieldLabel>
+                        <FieldLabel htmlFor="db_password" size="sm">Database Password</FieldLabel>
                         <Input
                           type="password"
                           id="db_password"
@@ -576,6 +601,22 @@ export default function WelcomePage() {
                         />
                         <FieldDescription>
                           The database password was created with the project. It can be reset in <span className="text-white/85">Database → Settings</span>.
+                        </FieldDescription>
+                      </Field>
+
+                      <Field>
+                        <FieldLabel htmlFor="supabase_url" size="sm">Supabase API URL <span className="text-muted-foreground font-normal">(optional)</span></FieldLabel>
+                        <Input
+                          type="url"
+                          id="supabase_url"
+                          name="supabase_url"
+                          placeholder="https://supabase.my-company.com"
+                          value={supabaseUrl}
+                          onChange={(e) => setSupabaseUrl(e.target.value)}
+                          size="sm"
+                        />
+                        <FieldDescription>
+                          Only needed for <span className="text-white/85">self-hosted Supabase</span> instances. Leave empty when using Supabase Cloud.
                         </FieldDescription>
                       </Field>
 

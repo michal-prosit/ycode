@@ -14,7 +14,7 @@ import type { SupabaseConfig } from '@/types';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { anon_key, service_role_key, connection_url, db_password } = body;
+    const { anon_key, service_role_key, connection_url, db_password, supabase_url } = body;
 
     // Validate required fields
     if (!anon_key || !service_role_key || !connection_url || !db_password) {
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       serviceRoleKey: service_role_key,
       connectionUrl: connection_url,
       dbPassword: db_password,
+      ...(supabase_url ? { supabaseUrl: supabase_url } : {}),
     };
 
     let parsed;
