@@ -34,6 +34,7 @@ import {
 
 // 4. Hooks
 import { useEditorUrl } from '@/hooks/use-editor-url';
+import { useEditComponent } from '@/hooks/use-edit-component';
 import { useZoom } from '@/hooks/use-zoom';
 import { useUndoRedo } from '@/hooks/use-undo-redo';
 
@@ -1524,6 +1525,13 @@ const CenterCanvas = React.memo(function CenterCanvas({
     setHoveredLayerId(layerId);
   }, [setHoveredLayerId]);
 
+  // Open the master component when a component instance is double-clicked.
+  // Mirrors the "Edit component" sidebar button.
+  const editComponent = useEditComponent();
+  const handleCanvasComponentEdit = useCallback((componentId: string, instanceLayerId: string) => {
+    editComponent(componentId, { returnToLayerId: instanceLayerId });
+  }, [editComponent]);
+
   // Undo/Redo handlers
   // Note: We don't auto-save after undo/redo to preserve the redo stack
   // The state will be saved when the user makes the next change
@@ -2436,6 +2444,7 @@ const CenterCanvas = React.memo(function CenterCanvas({
                         onIframeReady={handleIframeReady}
                         onLayerHover={handleCanvasLayerHover}
                         onCanvasClick={handleCanvasClick}
+                        onComponentEdit={handleCanvasComponentEdit}
                         editingComponentVariables={editingComponentVariables}
                         disableEditorHiddenLayers={!!activeInteractionTriggerLayerId}
                         zoom={zoom}
