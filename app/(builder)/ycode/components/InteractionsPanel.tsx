@@ -2196,6 +2196,9 @@ export default function InteractionsPanel({
                             const element = getIframeElement(selectedTween.layer_id);
                             if (element && previewedElementRef.current?.layerId === selectedTween.layer_id) {
                               if (element !== previewedElementRef.current.element) {
+                                // React replaced the DOM node — revert any stale split-text
+                                // instance and re-snapshot originalStyle from the fresh node
+                                // (which doesn't carry our previous gsap-applied inline styles).
                                 const oldSplitInstance = splitTextInstancesRef.current.get(selectedTween.layer_id);
                                 if (oldSplitInstance) {
                                   try {
@@ -2205,12 +2208,16 @@ export default function InteractionsPanel({
                                   }
                                   splitTextInstancesRef.current.delete(selectedTween.layer_id);
                                 }
+                                previewedElementRef.current = {
+                                  ...previewedElementRef.current,
+                                  element,
+                                  originalStyle: element.getAttribute('style') || '',
+                                };
                               }
-                              previewedElementRef.current = {
-                                ...previewedElementRef.current,
-                                element,
-                                originalStyle: element.getAttribute('style') || '',
-                              };
+                              // Same DOM node: keep the truly-original style captured on first
+                              // preview. Re-snapshotting here would bake in the gsap-applied
+                              // inline styles (e.g. backgroundColor) and they'd persist on
+                              // canvas after the picker closes.
                             }
                             applyPreviewFn();
                             isChangingPropertyRef.current = false;
@@ -2317,6 +2324,7 @@ export default function InteractionsPanel({
                                       value={(fromValue as string) ?? ''}
                                       onChange={handleFromChange}
                                       onImmediateChange={handleFromChange}
+                                      onOpenChange={(open) => open ? handlePreviewFrom() : clearPreviewStyles(true)}
                                       placeholder="From"
                                     />
                                   </div>
@@ -2448,6 +2456,7 @@ export default function InteractionsPanel({
                                   value={(toValue as string) ?? ''}
                                   onChange={handleToChange}
                                   onImmediateChange={handleToChange}
+                                  onOpenChange={(open) => open ? handlePreviewTo() : clearPreviewStyles(true)}
                                   placeholder="To color"
                                 />
                               </div>

@@ -61,6 +61,8 @@ interface ColorPickerProps {
   solidOnly?: boolean;
   /** Render a compact swatch-only trigger (hides hex/label and clear button). Useful in tight UI like inline animation inputs. */
   swatchOnly?: boolean;
+  /** Called when the popover open state changes (for callers that need to react to open/close, e.g. canvas previews). */
+  onOpenChange?: (open: boolean) => void;
   /** CMS color field binding (optional) */
   binding?: ColorPickerBindingProps;
   /** Called when the clear button is clicked (in addition to onChange('')) */
@@ -1134,6 +1136,7 @@ export default function ColorPicker({
   placeholder = '#ffffff',
   solidOnly = false,
   swatchOnly = false,
+  onOpenChange: onOpenChangeProp,
   binding,
   onClear,
   imageTab,
@@ -1353,6 +1356,7 @@ export default function ColorPicker({
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
+    onOpenChangeProp?.(newOpen);
     if (newOpen && !hasValue) {
       // Initialize internal color picker state with default (don't push to layer yet)
       const defaultColor = parseColor(defaultValue);
