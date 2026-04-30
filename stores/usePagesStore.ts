@@ -23,8 +23,15 @@ import {
 import { generateId } from '../lib/utils';
 import { getDescendantFolderIds, isHomepage, findHomepage, findNextSelection } from '../lib/page-utils';
 import { updateLayersWithStyle, detachStyleFromLayers } from '../lib/layer-style-utils';
-import { updateLayersWithComponent, detachComponentFromLayers } from '../lib/component-utils';
+import { updateLayersWithComponent, detachComponentFromLayers, containsComponent } from '../lib/component-utils';
 import { useComponentsStore, triggerThumbnailGeneration } from './useComponentsStore';
+
+/**
+ * Module-level dedupe map for in-flight loadDraft requests.
+ * Kept outside the store so subscribers do not re-render when load
+ * state changes, while still preventing duplicate HTTP fetches.
+ */
+const inflightDraftLoads = new Map<string, Promise<void>>();
 
 interface PagesState {
   pages: Page[];
@@ -304,41 +311,55 @@ export const usePagesStore = create<PagesStore>((set, get) => ({
   },
 
   loadDraft: async (pageId) => {
+    // Dedupe concurrent loads for the same page. Multiple components (e.g.
+    // LeftSidebar and CenterCanvas) may both fire loadDraft on a page switch;
+    // only one HTTP request should be in flight at a time per page.
+    const existing = inflightDraftLoads.get(pageId);
+    if (existing) {
+      return existing;
+    }
+
     // Check if we already have a draft with unsaved changes
     const existingDraft = get().draftsByPageId[pageId];
 
-    set({ isLoading: true, error: null });
-    try {
-      const response = await pageLayersApi.getDraft(pageId);
-      if (response.error) {
-        set({ error: response.error, isLoading: false });
-        return;
-      }
-      if (response.data) {
-        // If we had local changes, we need to decide what to do
-        // For now, we'll prefer server data when explicitly loading (e.g., page switch)
-        // but log a warning if we're overwriting local changes
-        if (existingDraft &&
-            JSON.stringify(existingDraft.layers) !== JSON.stringify(response.data.layers)) {
-          console.warn('⚠️ loadDraft: Overwriting local changes with server data');
+    const promise = (async () => {
+      set({ error: null });
+      try {
+        const response = await pageLayersApi.getDraft(pageId);
+        if (response.error) {
+          set({ error: response.error });
+          return;
         }
+        if (response.data) {
+          // If we had local changes, we need to decide what to do
+          // For now, we'll prefer server data when explicitly loading (e.g., page switch)
+          // but log a warning if we're overwriting local changes
+          if (existingDraft &&
+              JSON.stringify(existingDraft.layers) !== JSON.stringify(response.data.layers)) {
+            console.warn('⚠️ loadDraft: Overwriting local changes with server data');
+          }
 
-        set((state) => ({
-          draftsByPageId: { ...state.draftsByPageId, [pageId]: response.data! },
-          isLoading: false,
-        }));
+          set((state) => ({
+            draftsByPageId: { ...state.draftsByPageId, [pageId]: response.data! },
+          }));
 
-        // Initialize version tracking with loaded state (awaited to ensure it completes before edits)
-        try {
-          const { initializeVersionTracking } = await import('@/lib/version-tracking');
-          initializeVersionTracking('page_layers', pageId, response.data!.layers);
-        } catch (err) {
-          console.error('Failed to initialize version tracking:', err);
+          // Initialize version tracking with loaded state (awaited to ensure it completes before edits)
+          try {
+            const { initializeVersionTracking } = await import('@/lib/version-tracking');
+            initializeVersionTracking('page_layers', pageId, response.data!.layers);
+          } catch (err) {
+            console.error('Failed to initialize version tracking:', err);
+          }
         }
+      } catch (error) {
+        set({ error: 'Failed to load draft' });
+      } finally {
+        inflightDraftLoads.delete(pageId);
       }
-    } catch (error) {
-      set({ error: 'Failed to load draft', isLoading: false });
-    }
+    })();
+
+    inflightDraftLoads.set(pageId, promise);
+    return promise;
   },
 
   loadAllDrafts: async () => {
@@ -2894,17 +2915,24 @@ export const usePagesStore = create<PagesStore>((set, get) => ({
   updateComponentOnLayers: (componentId, newLayers) => {
     const { draftsByPageId } = get();
 
-    const updatedDrafts = { ...draftsByPageId };
+    let mutated = false;
+    const updatedDrafts: typeof draftsByPageId = { ...draftsByPageId };
 
-    Object.keys(updatedDrafts).forEach(pageId => {
-      const draft = updatedDrafts[pageId];
-      updatedDrafts[pageId] = {
-        ...draft,
-        layers: updateLayersWithComponent(draft.layers, componentId, newLayers),
-      };
+    Object.keys(draftsByPageId).forEach(pageId => {
+      const draft = draftsByPageId[pageId];
+      if (!containsComponent(draft.layers, componentId)) {
+        return;
+      }
+      const nextLayers = updateLayersWithComponent(draft.layers, componentId, newLayers);
+      if (nextLayers !== draft.layers) {
+        mutated = true;
+        updatedDrafts[pageId] = { ...draft, layers: nextLayers };
+      }
     });
 
-    set({ draftsByPageId: updatedDrafts });
+    if (mutated) {
+      set({ draftsByPageId: updatedDrafts });
+    }
   },
 
   /**

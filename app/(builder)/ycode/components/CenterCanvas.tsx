@@ -681,13 +681,9 @@ const CenterCanvas = React.memo(function CenterCanvas({
     }
   }, [richTextSheetLayerId, selectedLayerId, closeRichTextSheet]);
 
-  // Load draft when page changes (ensure draft exists before rendering)
-  const loadDraft = usePagesStore((state) => state.loadDraft);
-  useEffect(() => {
-    if (currentPageId && !currentDraft) {
-      loadDraft(currentPageId);
-    }
-  }, [currentPageId, loadDraft, currentDraft]);
+  // Draft loading is owned by LeftSidebar (wrapped in startTransition).
+  // The store-level in-flight guard in loadDraft makes any concurrent call
+  // a no-op if LeftSidebar is not mounted.
 
   // Reset content height when page changes to force Canvas to recalculate
   useEffect(() => {
