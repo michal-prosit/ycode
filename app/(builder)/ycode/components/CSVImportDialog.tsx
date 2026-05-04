@@ -285,7 +285,7 @@ export function CSVImportDialog({
     for (let i = startIndex; i < rows.length && batch.length < MAX_BATCH_SIZE; i++) {
       const row = rows[i];
       const rowSize = Object.values(row).reduce((sum, v) => sum + v.length, 0) * 2;
-      if (batch.length > 0 && estimatedSize + rowSize > MAX_BODY_BYTES) break;
+      if (estimatedSize + rowSize > MAX_BODY_BYTES) break;
       batch.push(row);
       estimatedSize += rowSize;
     }
@@ -293,8 +293,11 @@ export function CSVImportDialog({
     return batch;
   };
 
-  // Send row batches from local state to the server for processing.
-  // Rows that exceed the body limit are omitted so the server falls back to storage.
+  /**
+   * Send row batches from local state to the server for processing.
+   * Oversized rows that can't fit in the body are skipped so the server
+   * can process them from the uploaded CSV in storage.
+   */
   const processImport = async (id: string) => {
     abortRef.current = false;
     let currentIndex = 0;
@@ -302,14 +305,27 @@ export function CSVImportDialog({
     while (!abortRef.current && currentIndex < rows.length) {
       const batch = buildBatch(currentIndex);
 
-      // If even one row exceeds the limit, omit rows so the server reads from storage
-      const sendRows = batch.length > 0;
+      if (batch.length === 0) {
+        // Single row exceeds body limit — tell the server to process it from storage
+        try {
+          const response = await fetch('/ycode/api/collections/import/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ importId: id }),
+          });
+          const data = await response.json();
+          if (response.ok) setImportStatus(data.data);
+        } catch { /* best-effort */ }
+        currentIndex++;
+        await new Promise(resolve => setTimeout(resolve, 0));
+        continue;
+      }
 
       try {
         const response = await fetch('/ycode/api/collections/import/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sendRows ? { importId: id, rows: batch } : { importId: id }),
+          body: JSON.stringify({ importId: id, rows: batch }),
         });
 
         const data = await response.json();
@@ -320,11 +336,9 @@ export function CSVImportDialog({
 
         setImportStatus(data.data);
 
-        // Advance index by however many the server processed this round
         const serverProcessed = (data.data.processedRows ?? 0) + (data.data.failedRows ?? 0);
         currentIndex = serverProcessed;
 
-        // Yield to the browser so React can paint the progress update
         await new Promise(resolve => setTimeout(resolve, 0));
 
         if (data.data.status === 'completed' || data.data.status === 'failed' || data.data.isComplete) {
@@ -341,7 +355,6 @@ export function CSVImportDialog({
       }
     }
 
-    // All rows sent — send one final call so the server can finalize
     if (!abortRef.current) {
       try {
         const response = await fetch('/ycode/api/collections/import/process', {
