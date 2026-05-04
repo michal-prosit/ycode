@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { CookieOptions } from '@supabase/ssr';
-import { credentials } from '@/lib/credentials';
-import { parseSupabaseConfig } from '@/lib/supabase-config-parser';
-import { cookies } from 'next/headers';
-import type { SupabaseConfig } from '@/types';
+import { createRouteClient } from '@/lib/supabase-route-client';
 
 /**
  * GET /ycode/api/auth/callback
- * 
+ *
  * Handle OAuth callback from Supabase Auth
- * (For future OAuth implementation)
  */
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -18,36 +12,14 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     try {
-      const config = await credentials.get<SupabaseConfig>('supabase_config');
+      const supabase = await createRouteClient();
 
-      if (!config) {
+      if (!supabase) {
         return NextResponse.redirect(
           new URL('/login?error=config', request.url)
         );
       }
 
-      const parsed = parseSupabaseConfig(config);
-      const cookieStore = await cookies();
-
-      const supabase = createServerClient(
-        parsed.projectUrl,
-        parsed.anonKey,
-        {
-          cookies: {
-            get(name: string) {
-              return cookieStore.get(name)?.value;
-            },
-            set(name: string, value: string, options: CookieOptions) {
-              cookieStore.set({ name, value, ...options });
-            },
-            remove(name: string, options: CookieOptions) {
-              cookieStore.set({ name, value: '', ...options });
-            },
-          },
-        }
-      );
-
-      // Exchange code for session
       const { error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
@@ -57,7 +29,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // Redirect to builder
       return NextResponse.redirect(new URL('/ycode', request.url));
     } catch (error) {
       console.error('Auth callback failed:', error);
@@ -67,6 +38,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // No code provided - redirect to login
   return NextResponse.redirect(new URL('/login', request.url));
 }

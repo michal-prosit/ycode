@@ -57,7 +57,7 @@ export async function get<T = unknown>(key: string): Promise<T | null> {
 
 /**
  * Set a value in storage.
- * Writes to .env.local and sets process.env in-memory for immediate availability.
+ * Writes to .env and sets process.env in-memory for immediate availability.
  * On Vercel, throws — env vars must be set via the dashboard.
  */
 export async function set(key: string, value: unknown): Promise<void> {
@@ -65,7 +65,7 @@ export async function set(key: string, value: unknown): Promise<void> {
     throw new Error(
       'Cannot write to file system on Vercel. Please set environment variables instead:\n' +
       '1. Go to Vercel Dashboard → Project Settings → Environment Variables\n' +
-      '2. Add: SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, SUPABASE_CONNECTION_URL, SUPABASE_DB_PASSWORD\n' +
+      '2. Add: SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, SUPABASE_CONNECTION_URL, SUPABASE_DB_PASSWORD (and SUPABASE_URL for self-hosted)\n' +
       '3. Redeploy your application'
     );
   }

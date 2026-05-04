@@ -11,6 +11,9 @@ import type { ApiResponse, SupabaseConfig } from '@/types';
  */
 export async function checkSetupStatus(): Promise<{
   is_configured: boolean;
+  is_setup_complete: boolean;
+  is_vercel: boolean;
+  error?: string;
 }> {
   const response = await fetch('/ycode/api/setup/status');
 

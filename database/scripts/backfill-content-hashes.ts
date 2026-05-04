@@ -23,8 +23,8 @@ import {
   generateComponentContentHash,
   generateLayerStyleContentHash,
   generateAssetContentHash,
+  generateCollectionItemContentHash,
 } from '../../lib/hash-utils';
-import { generateCollectionItemContentHash } from '../../lib/hash-utils';
 
 const PAGE_SIZE = 1000;
 
