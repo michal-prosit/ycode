@@ -188,11 +188,14 @@ function prepareRow(
   };
 }
 
-const BATCH_SIZE = 20;
+/** Max rows to process from storage in a single call (kept low to avoid OOM on large CSVs). */
+const STORAGE_BATCH_SIZE = 5;
 
 /**
  * Fallback: download and parse the CSV from Supabase Storage.
  * Used when the client doesn't provide rows directly (e.g. resume after page reload).
+ * Only extracts the needed slice — the full CSV is dereferenced before returning
+ * so GC can reclaim it before the heavy processing phase.
  */
 async function loadRowsFromStorage(
   csvMeta: { storage_path?: string } | null,
@@ -218,11 +221,9 @@ async function loadRowsFromStorage(
 
   const csvText = await fileBlob.text();
   const parsed = parseCSVText(csvText);
+  const rows = parsed.rows.slice(startIndex, startIndex + STORAGE_BATCH_SIZE);
 
-  return {
-    rows: parsed.rows.slice(startIndex, startIndex + BATCH_SIZE),
-    supabase,
-  };
+  return { rows, supabase };
 }
 
 /**
@@ -288,6 +289,7 @@ export async function POST(request: NextRequest) {
     // Resolve rows: use client-provided rows or fall back to storage download
     let rowsToProcess: Record<string, string>[];
     let supabaseForCleanup: Awaited<ReturnType<typeof getSupabaseAdmin>> = null;
+    let isStorageFallback = false;
 
     if (clientRows && Array.isArray(clientRows) && clientRows.length > 0) {
       rowsToProcess = clientRows;
@@ -295,6 +297,7 @@ export async function POST(request: NextRequest) {
       const storageResult = await loadRowsFromStorage(csvMeta, startIndex);
       rowsToProcess = storageResult.rows;
       supabaseForCleanup = storageResult.supabase;
+      isStorageFallback = true;
     }
 
     if (rowsToProcess.length === 0) {
@@ -416,7 +419,8 @@ export async function POST(request: NextRequest) {
       }
 
       // 3) Download + upload only the URLs not already in the DB (parallel, batched)
-      const ASSET_CONCURRENCY = 5;
+      // Lower concurrency for storage fallback to leave memory for the CSV parse overhead
+      const ASSET_CONCURRENCY = isStorageFallback ? 3 : 10;
       for (let i = 0; i < urlsToDownload.length; i += ASSET_CONCURRENCY) {
         const batch = urlsToDownload.slice(i, i + ASSET_CONCURRENCY);
         const results = await Promise.allSettled(
