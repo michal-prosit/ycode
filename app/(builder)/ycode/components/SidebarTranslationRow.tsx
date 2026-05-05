@@ -69,6 +69,23 @@ export default function SidebarTranslationRow({
   const isRichText = item.content_type === 'richtext';
   const isAsset = item.content_type === 'asset_id';
 
+  // Sub-label shown beneath each language name when a layer has more than
+  // one translatable property (e.g. an image has both source + alt text).
+  // Plain text content stays unlabelled — the language name plus the textarea
+  // already make it obvious what's being translated.
+  const propertyLabel = (() => {
+    const suffix = item.content_key.split(':').pop();
+    switch (suffix) {
+      case 'image_alt': return 'Image ALT';
+      case 'image_src': return 'Image';
+      case 'video_src': return 'Video';
+      case 'video_poster': return 'Video poster';
+      case 'audio_src': return 'Audio';
+      case 'icon_src': return 'Icon';
+      default: return null;
+    }
+  })();
+
   const translation = selectedLocaleId
     ? getTranslationByKey(selectedLocaleId, item.key)
     : null;
@@ -250,7 +267,14 @@ export default function SidebarTranslationRow({
     <div className="flex flex-col gap-4">
       {/* Source (default locale, read-only) */}
       <div className="flex flex-col gap-1.5">
-        <Label className="text-xs font-medium">{defaultLocaleLabel}</Label>
+        <div className="flex flex-col gap-0.5">
+          <Label className="text-xs font-medium">{defaultLocaleLabel}</Label>
+          {propertyLabel && (
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+              {propertyLabel}
+            </span>
+          )}
+        </div>
         {isAsset ? (
           <div className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 opacity-80">
             {sourceAsset && renderAssetPreview(sourceAsset)}
@@ -273,7 +297,14 @@ export default function SidebarTranslationRow({
           read-only preview + Expand button when caller opted into previewOnly
           mode (rich-text layers, which edit in the dedicated overlay). */}
       <div className="flex flex-col gap-1.5">
-        <Label className="text-xs font-medium">{currentLocaleLabel}</Label>
+        <div className="flex flex-col gap-0.5">
+          <Label className="text-xs font-medium">{currentLocaleLabel}</Label>
+          {propertyLabel && (
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+              {propertyLabel}
+            </span>
+          )}
+        </div>
         {isAsset ? (
           <div
             className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 cursor-pointer hover:bg-secondary/35 transition-colors"
