@@ -2046,31 +2046,44 @@ const RightSidebar = React.memo(function RightSidebar({
                     </EmptyDescription>
                   </Empty>
                 ) : (
-                  translatableItemsForSelectedLayer.map((item) => {
-                    // Rich-text element layers are previewed read-only here
-                    // and edited in the dedicated RichTextEditorSheet overlay,
-                    // launched via the per-row "Expand to edit" button.
-                    const isRichTextElementContent = isRichTextLayer(selectedLayer) && item.content_type === 'richtext';
-                    return (
-                      <SidebarTranslationRow
-                        key={item.key}
-                        item={item}
-                        selectedLocaleId={selectedLocaleId}
-                        defaultLocaleLabel={defaultLocale?.label || 'Default'}
-                        currentLocaleLabel={currentLocale.label}
-                        localInputValues={translationLocalInputValues}
-                        onLocalValueChange={handleTranslationLocalValueChange}
-                        onLocalValueClear={handleTranslationLocalValueClear}
-                        getTranslationByKey={getTranslationByKey}
-                        createTranslation={createTranslation}
-                        updateTranslation={updateTranslation}
-                        previewOnly={isRichTextElementContent}
-                        onExpand={isRichTextElementContent && selectedLayerId
-                          ? () => openRichTextSheet(selectedLayerId)
-                          : undefined}
-                      />
-                    );
-                  })
+                  // Group rows under language headers: all source values for
+                  // the default locale first, then the editable translations
+                  // for the active locale. Easier to scan when a layer has
+                  // multiple translatable properties (e.g. image src + alt).
+                  (['source', 'translation'] as const).map((side) => (
+                    <div key={side} className="flex flex-col gap-4">
+                      <Label className="text-xs font-medium">
+                        {side === 'source'
+                          ? defaultLocale?.label || 'Default'
+                          : currentLocale.label}
+                      </Label>
+                      {translatableItemsForSelectedLayer.map((item) => {
+                        // Rich-text element layers are previewed read-only and
+                        // edited in the dedicated RichTextEditorSheet overlay,
+                        // launched via the per-row "Expand to edit" button.
+                        const isRichTextElementContent =
+                          isRichTextLayer(selectedLayer) && item.content_type === 'richtext';
+                        return (
+                          <SidebarTranslationRow
+                            key={`${side}:${item.key}`}
+                            item={item}
+                            side={side}
+                            selectedLocaleId={selectedLocaleId}
+                            localInputValues={translationLocalInputValues}
+                            onLocalValueChange={handleTranslationLocalValueChange}
+                            onLocalValueClear={handleTranslationLocalValueClear}
+                            getTranslationByKey={getTranslationByKey}
+                            createTranslation={createTranslation}
+                            updateTranslation={updateTranslation}
+                            previewOnly={isRichTextElementContent}
+                            onExpand={isRichTextElementContent && selectedLayerId
+                              ? () => openRichTextSheet(selectedLayerId)
+                              : undefined}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))
                 )}
               </div>
             )}

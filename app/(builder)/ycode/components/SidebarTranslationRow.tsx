@@ -19,9 +19,14 @@ import type { IconProps } from '@/components/ui/icon';
 
 interface SidebarTranslationRowProps {
   item: TranslatableItem;
+  /**
+   * Which half of the translation pair to render. The right sidebar groups
+   * rows under language sections (Default → Active), so each item is rendered
+   * twice — once as the read-only source, once as the (usually editable)
+   * translation for the selected locale.
+   */
+  side: 'source' | 'translation';
   selectedLocaleId: string | null;
-  defaultLocaleLabel: string;
-  currentLocaleLabel: string;
   localInputValues: Record<string, string>;
   onLocalValueChange: (key: string, value: string) => void;
   onLocalValueClear: (key: string) => void;
@@ -29,9 +34,9 @@ interface SidebarTranslationRowProps {
   createTranslation: (data: CreateTranslationData) => Promise<Translation | null>;
   updateTranslation: (translation: Translation, data: UpdateTranslationData) => Promise<void>;
   /**
-   * When true, both source and translation textareas are read-only previews.
-   * Used for rich-text layers where editing happens in a dedicated overlay
-   * (the RichTextEditorSheet) opened via `onExpand`.
+   * When true, the translation side renders a read-only preview with an
+   * "Expand to edit" button instead of an editable surface. Used for the
+   * rich-text element layer, which edits in the dedicated RichTextEditorSheet.
    */
   previewOnly?: boolean;
   /** Click handler for the "Expand to edit" button shown in preview-only mode. */
@@ -39,12 +44,11 @@ interface SidebarTranslationRowProps {
 }
 
 /**
- * Right-sidebar translation editor.
+ * Right-sidebar translation editor for a single (item, side) pair.
  *
- * A deliberately simpler take on `TranslationRow`: stacked plain `Textarea`s
- * for source + translation, no rich-text editor, no completion toggle, no slug
- * validation. Used while the user is browsing the canvas in a non-default
- * locale — quick inline translation flow next to the layer being edited.
+ * A deliberately simpler take on `TranslationRow`: stacked plain `Textarea`s,
+ * no rich-text editor, no completion toggle, no slug validation. Used while
+ * the user is browsing the canvas in a non-default locale.
  *
  * Rich-text values (Tiptap JSON) are flattened to plain text for display and
  * re-wrapped into a Tiptap doc on save so the rendering pipeline keeps getting
@@ -52,9 +56,8 @@ interface SidebarTranslationRowProps {
  */
 export default function SidebarTranslationRow({
   item,
+  side,
   selectedLocaleId,
-  defaultLocaleLabel,
-  currentLocaleLabel,
   localInputValues,
   onLocalValueChange,
   onLocalValueClear,
@@ -263,19 +266,21 @@ export default function SidebarTranslationRow({
     );
   };
 
+  // Cap height so long translations scroll inside the field instead of
+  // pushing the rest of the inspector down (Textarea uses field-sizing-content
+  // by default, which auto-grows).
+  const textareaClass = 'resize-none max-h-32 overflow-y-auto';
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Source (default locale, read-only) */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-xs font-medium">{defaultLocaleLabel}</Label>
-          {propertyLabel && (
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              {propertyLabel}
-            </span>
-          )}
-        </div>
-        {isAsset ? (
+    <div className="flex flex-col gap-1.5">
+      {propertyLabel && (
+        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+          {propertyLabel}
+        </Label>
+      )}
+
+      {side === 'source' ? (
+        isAsset ? (
           <div className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 opacity-80">
             {sourceAsset && renderAssetPreview(sourceAsset)}
           </div>
@@ -284,68 +289,54 @@ export default function SidebarTranslationRow({
             value={sourceDisplayValue}
             readOnly
             tabIndex={-1}
-            // Cap height so long translations scroll inside the field instead
-            // of pushing the rest of the inspector down (textarea uses
-            // field-sizing-content by default, which auto-grows).
-            className="resize-none text-muted-foreground max-h-32 overflow-y-auto"
+            className={`${textareaClass} text-muted-foreground`}
             rows={3}
           />
-        )}
-      </div>
-
-      {/* Translation (current locale). Editable for plain text/asset rows;
-          read-only preview + Expand button when caller opted into previewOnly
-          mode (rich-text layers, which edit in the dedicated overlay). */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-xs font-medium">{currentLocaleLabel}</Label>
-          {propertyLabel && (
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              {propertyLabel}
-            </span>
+        )
+      ) : (
+        <>
+          {isAsset ? (
+            <div
+              className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 cursor-pointer hover:bg-secondary/35 transition-colors"
+              onClick={() => setIsAssetPickerOpen(true)}
+            >
+              {displayedAsset && renderAssetPreview(displayedAsset)}
+            </div>
+          ) : previewOnly ? (
+            <Textarea
+              value={translationDisplayValue}
+              readOnly
+              tabIndex={-1}
+              placeholder={sourceDisplayValue || 'No translation yet'}
+              className={`${textareaClass} text-muted-foreground`}
+              rows={3}
+            />
+          ) : (
+            <Textarea
+              value={translationDisplayValue}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onBlur={(e) => handleTextBlur(e.target.value)}
+              placeholder={sourceDisplayValue || 'Enter translation...'}
+              className={textareaClass}
+              rows={3}
+            />
           )}
-        </div>
-        {isAsset ? (
-          <div
-            className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 cursor-pointer hover:bg-secondary/35 transition-colors"
-            onClick={() => setIsAssetPickerOpen(true)}
-          >
-            {displayedAsset && renderAssetPreview(displayedAsset)}
-          </div>
-        ) : previewOnly ? (
-          <Textarea
-            value={translationDisplayValue}
-            readOnly
-            tabIndex={-1}
-            placeholder={sourceDisplayValue || 'No translation yet'}
-            className="resize-none text-muted-foreground max-h-32 overflow-y-auto"
-            rows={3}
-          />
-        ) : (
-          <Textarea
-            value={translationDisplayValue}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onBlur={(e) => handleTextBlur(e.target.value)}
-            placeholder={sourceDisplayValue || 'Enter translation...'}
-            className="resize-none max-h-32 overflow-y-auto"
-            rows={3}
-          />
-        )}
-        {previewOnly && onExpand && (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="gap-2.5 mt-1"
-            onClick={onExpand}
-          >
-            Expand to edit
-            <span><Icon name="expand" className="size-2.5" /></span>
-          </Button>
-        )}
-      </div>
+          {previewOnly && onExpand && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="gap-2.5 mt-1"
+              onClick={onExpand}
+            >
+              Expand to edit
+              <span><Icon name="expand" className="size-2.5" /></span>
+            </Button>
+          )}
+        </>
+      )}
 
-      {isAsset && (
+      {side === 'translation' && isAsset && (
         <FileManagerDialog
           open={isAssetPickerOpen}
           onOpenChange={setIsAssetPickerOpen}
