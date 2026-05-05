@@ -2926,8 +2926,10 @@ const CenterCanvas = React.memo(function CenterCanvas({
               closeRichTextSheet();
             }
           }}
-          title={richTextTranslationContext ? 'Translate rich text' : 'Content editor'}
-          description={richTextTranslationContext ? selectedLocale?.label : 'Element content'}
+          title="Content editor"
+          description={richTextTranslationContext && selectedLocale
+            ? `Translate to ${selectedLocale.label}`
+            : 'Element content'}
           value={richTextSheetValue}
           onChange={handleRichTextSheetChange}
           fieldGroups={richTextSheetFieldGroups}
