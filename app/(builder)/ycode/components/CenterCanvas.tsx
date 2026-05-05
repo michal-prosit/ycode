@@ -58,7 +58,7 @@ import RichTextEditorSheet from './RichTextEditorSheet';
 
 // 6. Utils
 import { buildLocalizedSlugPath, buildLocalizedDynamicPageUrl } from '@/lib/page-utils';
-import { getTranslationValue, applyCmsTranslations } from '@/lib/localisation-utils';
+import { getTranslationValue, applyCmsTranslations, extractLayerTranslatableItemsShallow } from '@/lib/localisation-utils';
 import { cn } from '@/lib/utils';
 import { getCollectionVariable, canDeleteLayer, findLayerById, findParentCollectionLayer, canLayerHaveLink, updateLayerProps, removeRichTextSublayer, isRichTextLayer, getLayerCmsFieldBinding } from '@/lib/layer-utils';
 import { CANVAS_BORDER, CANVAS_PADDING, updateViewportOverrides } from '@/lib/canvas-utils';
@@ -645,6 +645,7 @@ const CenterCanvas = React.memo(function CenterCanvas({
   const activeInteractionTriggerLayerId = useEditorStore((state) => state.activeInteractionTriggerLayerId);
   const richTextSheetLayerId = useEditorStore((state) => state.richTextSheetLayerId);
   const closeRichTextSheet = useEditorStore((state) => state.closeRichTextSheet);
+  const openRichTextSheet = useEditorStore((state) => state.openRichTextSheet);
   const activeSublayerIndex = useEditorStore((state) => state.activeSublayerIndex);
   const setActiveSublayerIndex = useEditorStore((state) => state.setActiveSublayerIndex);
   const activeListItemIndex = useEditorStore((state) => state.activeListItemIndex);
@@ -682,9 +683,15 @@ const CenterCanvas = React.memo(function CenterCanvas({
     }
   }, [isTextEditing, editingLayerId, selectedLayerId, requestFinishEditing]);
 
-  // Close rich text sheet if a different layer is selected
+  // Close rich text sheet if a different layer is selected. Flushing the
+  // pending translation save first ensures the last keystroke is persisted
+  // when the user changes selection mid-edit. The flush function is defined
+  // later in this component, so we go through a ref to keep effect ordering
+  // and avoid a "use-before-declaration" cycle.
+  const flushRichTextTranslationSaveRef = useRef<() => void>(() => { });
   useEffect(() => {
     if (richTextSheetLayerId && selectedLayerId !== richTextSheetLayerId) {
+      flushRichTextTranslationSaveRef.current();
       closeRichTextSheet();
     }
   }, [richTextSheetLayerId, selectedLayerId, closeRichTextSheet]);
@@ -1482,24 +1489,130 @@ const CenterCanvas = React.memo(function CenterCanvas({
   // when other deps (fields, allFields) change.
   const [richTextSheetValue, setRichTextSheetValue] = useState<any>(null);
 
+  // Translation context for the rich-text sheet. When the user is browsing the
+  // canvas in a non-default locale and a rich-text layer is the sheet target,
+  // we redirect read/write through the translations table instead of mutating
+  // the source layer. This is what makes the rich-text editor act as the
+  // translation surface for rich text (no plain-textarea fallback in the sidebar).
+  const richTextTranslationContext = useMemo(() => {
+    if (!richTextSheetLayerId || !selectedLocale || selectedLocale.is_default) return null;
+    const sourceLayers: Layer[] = editingComponentId
+      ? (componentDrafts[editingComponentId] || [])
+      : (currentDraft?.layers || []);
+    const layer = findLayerById(sourceLayers, richTextSheetLayerId);
+    if (!layer || !isRichTextLayer(layer)) return null;
+    const sourceType: 'page' | 'component' = editingComponentId ? 'component' : 'page';
+    const sourceId = editingComponentId || currentPageId;
+    if (!sourceId) return null;
+    const items = extractLayerTranslatableItemsShallow(layer, sourceType, sourceId);
+    const item = items.find((i) => i.content_type === 'richtext');
+    if (!item) return null;
+    return { item };
+  }, [richTextSheetLayerId, selectedLocale, editingComponentId, componentDrafts, currentDraft, currentPageId]);
+
   useEffect(() => {
     if (!richTextSheetLayerId) {
       setRichTextSheetValue(null);
       return;
     }
+
+    // Localization mode: only show the saved translation. Per spec we don't
+    // surface the default-locale source inside the editor — the user types the
+    // translation from scratch (the source is visible on the canvas).
+    if (richTextTranslationContext && selectedLocaleId) {
+      const stored = useLocalisationStore
+        .getState()
+        .getTranslationByKey(selectedLocaleId, richTextTranslationContext.item.key)?.content_value;
+      if (stored && stored.trim()) {
+        try {
+          setRichTextSheetValue(JSON.parse(stored));
+          return;
+        } catch {
+          // fall through to empty doc
+        }
+      }
+      setRichTextSheetValue({ type: 'doc', content: [{ type: 'paragraph' }] });
+      return;
+    }
+
     const source = editingComponentId
       ? componentDrafts[editingComponentId]
       : currentDraft?.layers ?? null;
     const layer = source ? findLayerById(source as Layer[], richTextSheetLayerId) : null;
     setRichTextSheetValue(getRichTextValue(layer?.variables));
-  // Only re-derive when the sheet target layer changes, not on every draft update
+  // Only re-derive when the sheet target layer (or translation context) changes,
+  // not on every draft update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [richTextSheetLayerId]);
+  }, [richTextSheetLayerId, richTextTranslationContext, selectedLocaleId]);
+
+  // Debounced save for translation writes — the rich-text editor fires onChange
+  // on every keystroke, so we coalesce writes to avoid spamming the API and
+  // racing the optimistic create with concurrent updates.
+  const richTextTranslationSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const richTextTranslationPendingValueRef = useRef<{ key: string; value: string; localeId: string } | null>(null);
+
+  const flushRichTextTranslationSave = useCallback(() => {
+    if (richTextTranslationSaveTimerRef.current) {
+      clearTimeout(richTextTranslationSaveTimerRef.current);
+      richTextTranslationSaveTimerRef.current = null;
+    }
+    const pending = richTextTranslationPendingValueRef.current;
+    if (!pending) return;
+    // Drop the pending save if the user switched locale or selection while
+    // typing — we only want to persist edits authored against the locale they
+    // were typed for.
+    if (!richTextTranslationContext || !selectedLocaleId) return;
+    if (pending.key !== richTextTranslationContext.item.key) return;
+    if (pending.localeId !== selectedLocaleId) return;
+    const item = richTextTranslationContext.item;
+    const store = useLocalisationStore.getState();
+    const latest = store.getTranslationByKey(selectedLocaleId, item.key);
+    const previousValue = latest?.content_value || '';
+    if (pending.value === previousValue) {
+      richTextTranslationPendingValueRef.current = null;
+      return;
+    }
+    richTextTranslationPendingValueRef.current = null;
+    const savePromise = latest
+      ? store.updateTranslation(latest, { content_value: pending.value, is_completed: true })
+      : store.createTranslation({
+        locale_id: selectedLocaleId,
+        source_type: item.source_type as 'page' | 'component',
+        source_id: item.source_id,
+        content_key: item.content_key,
+        content_type: 'richtext',
+        content_value: pending.value,
+        is_completed: true,
+      });
+    savePromise.catch((error) => console.error('Failed to save rich text translation:', error));
+  }, [richTextTranslationContext, selectedLocaleId]);
+
+  // Keep the flush ref pointing at the latest closure so the early
+  // close-on-different-selection effect can flush without a forward reference.
+  useEffect(() => {
+    flushRichTextTranslationSaveRef.current = flushRichTextTranslationSave;
+  }, [flushRichTextTranslationSave]);
 
   const handleRichTextSheetChange = useCallback((value: any) => {
     if (!richTextSheetLayerId) return;
-    // Keep local state in sync so the value prop matches the editor's content
     setRichTextSheetValue(value);
+
+    if (richTextTranslationContext && selectedLocaleId) {
+      const finalValue = value ? JSON.stringify(value) : '';
+      richTextTranslationPendingValueRef.current = {
+        key: richTextTranslationContext.item.key,
+        value: finalValue,
+        localeId: selectedLocaleId,
+      };
+      if (richTextTranslationSaveTimerRef.current) {
+        clearTimeout(richTextTranslationSaveTimerRef.current);
+      }
+      richTextTranslationSaveTimerRef.current = setTimeout(() => {
+        flushRichTextTranslationSave();
+      }, 400);
+      return;
+    }
+
     const textVariable = value && (typeof value === 'object' || (typeof value === 'string' && value.trim())) ? {
       type: 'dynamic_rich_text' as const,
       data: {
@@ -1528,7 +1641,33 @@ const CenterCanvas = React.memo(function CenterCanvas({
         variables: { ...layer?.variables, text: textVariable },
       });
     }
-  }, [richTextSheetLayerId, updateLayer]);
+  }, [richTextSheetLayerId, updateLayer, richTextTranslationContext, selectedLocaleId, flushRichTextTranslationSave]);
+
+  // Auto-open the rich-text editor sheet when a rich-text layer is selected
+  // while localizing — the sheet is the translation surface for rich text, so
+  // it replaces the regular sidebar editor for these layers. We only fire on
+  // selection transitions so the user is free to close the sheet without it
+  // immediately re-opening for the same selection.
+  const lastAutoOpenedRichTextLayerRef = useRef<string | null>(null);
+  useEffect(() => {
+    const isLocalizing = !!(selectedLocale && !selectedLocale.is_default);
+    if (!isLocalizing || !selectedLayerId) {
+      lastAutoOpenedRichTextLayerRef.current = null;
+      return;
+    }
+    if (lastAutoOpenedRichTextLayerRef.current === selectedLayerId) return;
+
+    const sourceLayers: Layer[] = editingComponentId
+      ? (componentDrafts[editingComponentId] || [])
+      : (currentDraft?.layers || []);
+    const layer = findLayerById(sourceLayers, selectedLayerId);
+    if (layer && isRichTextLayer(layer)) {
+      lastAutoOpenedRichTextLayerRef.current = selectedLayerId;
+      openRichTextSheet(selectedLayerId);
+    } else {
+      lastAutoOpenedRichTextLayerRef.current = null;
+    }
+  }, [selectedLocale, selectedLayerId, editingComponentId, componentDrafts, currentDraft, openRichTextSheet]);
 
   // Handle iframe ready callback (for SelectionOverlay)
   const handleIframeReady = useCallback((iframeElement: HTMLIFrameElement) => {
@@ -2808,9 +2947,14 @@ const CenterCanvas = React.memo(function CenterCanvas({
       {richTextSheetValue && (
         <RichTextEditorSheet
           open={!!richTextSheetLayerId}
-          onOpenChange={(open) => { if (!open) closeRichTextSheet(); }}
-          title="Content editor"
-          description="Element content"
+          onOpenChange={(open) => {
+            if (!open) {
+              flushRichTextTranslationSave();
+              closeRichTextSheet();
+            }
+          }}
+          title={richTextTranslationContext ? 'Translate rich text' : 'Content editor'}
+          description={richTextTranslationContext ? selectedLocale?.label : 'Element content'}
           value={richTextSheetValue}
           onChange={handleRichTextSheetChange}
           fieldGroups={richTextSheetFieldGroups}

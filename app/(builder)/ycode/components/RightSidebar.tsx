@@ -297,11 +297,14 @@ const RightSidebar = React.memo(function RightSidebar({
 
   const translatableItemsForSelectedLayer = useMemo(() => {
     if (!selectedLayer || !translationSource) return [];
+    // Rich text translations are edited in the dedicated RichTextEditorSheet
+    // overlay (auto-opened by CenterCanvas), so we hide them from the sidebar
+    // to avoid a duplicate, less-capable plain-text editor for the same field.
     return extractLayerTranslatableItemsShallow(
       selectedLayer,
       translationSource.sourceType,
       translationSource.sourceId,
-    );
+    ).filter((item) => item.content_type !== 'richtext');
   }, [selectedLayer, translationSource]);
 
   const hasCustomAttributes = !!(selectedLayer?.settings?.customAttributes &&
@@ -2046,11 +2049,15 @@ const RightSidebar = React.memo(function RightSidebar({
                 {translatableItemsForSelectedLayer.length === 0 ? (
                   <Empty>
                     <EmptyMedia variant="icon">
-                      <Icon name="globe" />
+                      <Icon name={isRichTextLayer(selectedLayer) ? 'type' : 'globe'} />
                     </EmptyMedia>
-                    <EmptyTitle>Nothing to translate</EmptyTitle>
+                    <EmptyTitle>
+                      {isRichTextLayer(selectedLayer) ? 'Translate in the editor' : 'Nothing to translate'}
+                    </EmptyTitle>
                     <EmptyDescription>
-                      This layer has no translatable content. Select a text or media element.
+                      {isRichTextLayer(selectedLayer)
+                        ? 'Rich text is translated in the editor panel that opens on the right.'
+                        : 'This layer has no translatable content. Select a text or media element.'}
                     </EmptyDescription>
                   </Empty>
                 ) : (
