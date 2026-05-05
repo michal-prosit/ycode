@@ -233,6 +233,7 @@ const RightSidebar = React.memo(function RightSidebar({
   const startElementPicker = useEditorStore((state) => state.startElementPicker);
   const stopElementPicker = useEditorStore((state) => state.stopElementPicker);
   const isElementPickerActive = useEditorStore((state) => !!state.elementPicker?.active);
+  const openRichTextSheet = useEditorStore((state) => state.openRichTextSheet);
 
   // Check if text is being edited on canvas
   const isTextEditingOnCanvas = useCanvasTextEditorStore((state) => state.isEditing);
@@ -2053,19 +2054,37 @@ const RightSidebar = React.memo(function RightSidebar({
             {isLocalizing && selectedLayer && currentLocale && (
               <div className="flex flex-col gap-6 py-5">
                 {translatableItemsForSelectedLayer.length === 0 ? (
-                  <Empty>
-                    <EmptyMedia variant="icon">
-                      <Icon name={isRichTextLayer(selectedLayer) ? 'type' : 'globe'} />
-                    </EmptyMedia>
-                    <EmptyTitle>
-                      {isRichTextLayer(selectedLayer) ? 'Translate in the editor' : 'Nothing to translate'}
-                    </EmptyTitle>
-                    <EmptyDescription>
-                      {isRichTextLayer(selectedLayer)
-                        ? 'Rich text is translated in the editor panel that opens on the right.'
-                        : 'This layer has no translatable content. Select a text or media element.'}
-                    </EmptyDescription>
-                  </Empty>
+                  // Rich text translations are routed through the
+                  // RichTextEditorSheet overlay. Mirror the regular Element →
+                  // Content row used for non-localizing rich text editing so
+                  // the user can re-open the editor after closing it.
+                  isRichTextLayer(selectedLayer) ? (
+                    <div className="grid grid-cols-3 items-center">
+                      <Label variant="muted">Content</Label>
+                      <div className="col-span-2 *:w-full">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="gap-2.5"
+                          onClick={() => selectedLayerId && openRichTextSheet(selectedLayerId)}
+                        >
+                          Expand
+                          <span><Icon name="expand" className="size-2.5" /></span>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Empty>
+                      <EmptyMedia variant="icon">
+                        <Icon name="globe" />
+                      </EmptyMedia>
+                      <EmptyTitle>Nothing to translate</EmptyTitle>
+                      <EmptyDescription>
+                        This layer has no translatable content. Select a text or media element.
+                      </EmptyDescription>
+                    </Empty>
+                  )
                 ) : (
                   translatableItemsForSelectedLayer.map((item) => (
                     <SidebarTranslationRow
