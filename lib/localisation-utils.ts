@@ -2,7 +2,7 @@ import type { Layer, Page, Translation, Locale, LocaleOption, CollectionField } 
 import { getLayerIcon, getLayerName } from '@/lib/layer-utils';
 import { createDynamicTextVariable, createDynamicRichTextVariable, createAssetVariable } from '@/lib/variable-utils';
 import { castValue } from '@/lib/collection-utils';
-import { tiptapDocHasFormatting, tiptapDocToCanonicalString } from '@/lib/tiptap-utils';
+import { tiptapDocHasFormatting, tiptapDocToCanonicalString, hasVariableNode, hasAnyTextOrVariable } from '@/lib/tiptap-utils';
 import { looksLikeFormattedHtml } from '@/lib/translation-classification';
 import type { IconProps } from '@/components/ui/icon';
 
@@ -266,45 +266,6 @@ export interface TranslatableItem {
 }
 
 /**
- * Extract text from a layer (includes text with inline variables)
- * Supports both DynamicTextVariable (plain text) and DynamicRichTextVariable (formatted text)
- */
-export function extractLayerText(layer: Layer): string | null {
-  if (!layer.variables?.text) {
-    return null;
-  }
-
-  const textVariable = layer.variables.text;
-
-  // Handle DynamicTextVariable (plain text)
-  if (textVariable.type === 'dynamic_text') {
-    const text = textVariable.data.content;
-
-    if (!text || !text.trim()) {
-      return null;
-    }
-
-    return text.trim();
-  }
-
-  // Handle DynamicRichTextVariable (Tiptap JSON with formatting)
-  if (textVariable.type === 'dynamic_rich_text') {
-    // Store Tiptap JSON as JSON string to preserve all formatting (bold, italic, custom styles, etc.)
-    const jsonContent = textVariable.data.content;
-
-    // Check if content is empty
-    if (!jsonContent || typeof jsonContent !== 'object') {
-      return null;
-    }
-
-    // Convert to JSON string for storage in translation database
-    return JSON.stringify(jsonContent);
-  }
-
-  return null;
-}
-
-/**
  * Extract alt text from an image layer
  * @param layer - Layer with image variables
  * @returns Alt text content or null if not available
@@ -373,29 +334,88 @@ function classifyLayerTextForTranslation(
   return null;
 }
 
-/** True if a Tiptap doc contains at least one dynamicVariable node. */
-function hasVariableNode(doc: any): boolean {
-  if (!doc?.content || !Array.isArray(doc.content)) return false;
-  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
-    if (!n || typeof n !== 'object') return false;
-    if (n.type === 'dynamicVariable') return true;
-    if (Array.isArray(n.content)) return walk(n.content);
-    return false;
-  });
-  return walk(doc.content);
-}
+/**
+ * Extract translatable media items (image src/alt, video src/poster, audio src)
+ * from a single layer. Shared by both the recursive and shallow extractors.
+ */
+function extractMediaTranslatableItems(
+  layer: Layer,
+  sourceType: 'page' | 'component',
+  sourceId: string,
+  items: TranslatableItem[]
+): void {
+  const layerName = getLayerName(layer);
 
-/** True if a Tiptap doc contains at least one text or dynamicVariable node. */
-function hasAnyTextOrVariable(doc: any): boolean {
-  if (!doc?.content || !Array.isArray(doc.content)) return false;
-  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
-    if (!n || typeof n !== 'object') return false;
-    if (n.type === 'text' && typeof n.text === 'string' && n.text.length > 0) return true;
-    if (n.type === 'dynamicVariable') return true;
-    if (Array.isArray(n.content)) return walk(n.content);
-    return false;
-  });
-  return walk(doc.content);
+  if (layer.name === 'image' && layer.variables?.image) {
+    const imageSrc = layer.variables.image.src;
+    if (imageSrc && imageSrc.type === 'asset' && imageSrc.data?.asset_id) {
+      items.push({
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:image_src`,
+        source_type: sourceType,
+        source_id: sourceId,
+        content_key: `layer:${layer.id}:image_src`,
+        content_type: 'asset_id',
+        content_value: imageSrc.data.asset_id,
+        info: { icon: 'image', label: `${layerName} (source)` },
+      });
+    }
+
+    const imageAlt = extractImageAltText(layer);
+    if (imageAlt) {
+      items.push({
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:image_alt`,
+        source_type: sourceType,
+        source_id: sourceId,
+        content_key: `layer:${layer.id}:image_alt`,
+        content_type: 'text',
+        content_value: imageAlt,
+        info: { icon: 'image', label: `${layerName} (alt text)` },
+      });
+    }
+  }
+
+  if (layer.name === 'video' && layer.variables?.video) {
+    const videoSrc = layer.variables.video.src;
+    if (videoSrc && videoSrc.type === 'asset' && videoSrc.data?.asset_id) {
+      items.push({
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:video_src`,
+        source_type: sourceType,
+        source_id: sourceId,
+        content_key: `layer:${layer.id}:video_src`,
+        content_type: 'asset_id',
+        content_value: videoSrc.data.asset_id,
+        info: { icon: 'video', label: `${layerName} (source)` },
+      });
+    }
+
+    const videoPoster = layer.variables.video.poster;
+    if (videoPoster && videoPoster.type === 'asset' && videoPoster.data?.asset_id) {
+      items.push({
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:video_poster`,
+        source_type: sourceType,
+        source_id: sourceId,
+        content_key: `layer:${layer.id}:video_poster`,
+        content_type: 'asset_id',
+        content_value: videoPoster.data.asset_id,
+        info: { icon: 'image', label: `${layerName} (poster)` },
+      });
+    }
+  }
+
+  if (layer.name === 'audio' && layer.variables?.audio?.src) {
+    const audioSrc = layer.variables.audio.src;
+    if (audioSrc.type === 'asset' && audioSrc.data?.asset_id) {
+      items.push({
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:audio_src`,
+        source_type: sourceType,
+        source_id: sourceId,
+        content_key: `layer:${layer.id}:audio_src`,
+        content_type: 'asset_id',
+        content_value: audioSrc.data.asset_id,
+        info: { icon: 'audio', label: `${layerName} (source)` },
+      });
+    }
+  }
 }
 
 /**
@@ -408,7 +428,6 @@ function extractLayerTranslatableItems(
   items: TranslatableItem[]
 ): void {
   for (const layer of layers) {
-    // Skip locale selector label as it is dynamically generated based on locale
     if (layer.key === 'localeSelectorLabel') continue;
 
     const classification = classifyLayerTextForTranslation(layer);
@@ -429,102 +448,8 @@ function extractLayerTranslatableItems(
       });
     }
 
-    // Extract asset IDs from media layers
-    // Image layer - extract src asset and alt text
-    if (layer.name === 'image' && layer.variables?.image) {
-      // Extract image src asset
-      const imageSrc = layer.variables.image.src;
-      if (imageSrc && imageSrc.type === 'asset' && imageSrc.data?.asset_id) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:image_src`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:image_src`,
-          content_type: 'asset_id',
-          content_value: imageSrc.data.asset_id,
-          info: {
-            icon: 'image',
-            label: `${getLayerName(layer)} (source)`,
-          },
-        });
-      }
+    extractMediaTranslatableItems(layer, sourceType, sourceId, items);
 
-      // Extract image alt text
-      const imageAlt = extractImageAltText(layer);
-      if (imageAlt) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:image_alt`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:image_alt`,
-          content_type: 'text',
-          content_value: imageAlt,
-          info: {
-            icon: 'image',
-            label: `${getLayerName(layer)} (alt text)`,
-          },
-        });
-      }
-    }
-
-    // Video layer - extract src and poster assets
-    if (layer.name === 'video' && layer.variables?.video) {
-      const videoSrc = layer.variables.video.src;
-      if (videoSrc && videoSrc.type === 'asset' && videoSrc.data?.asset_id) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:video_src`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:video_src`,
-          content_type: 'asset_id',
-          content_value: videoSrc.data.asset_id,
-          info: {
-            icon: 'video',
-            label: `${getLayerName(layer)} (source)`,
-          },
-        });
-      }
-
-      const videoPoster = layer.variables.video.poster;
-      if (videoPoster && videoPoster.type === 'asset' && videoPoster.data?.asset_id) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:video_poster`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:video_poster`,
-          content_type: 'asset_id',
-          content_value: videoPoster.data.asset_id,
-          info: {
-            icon: 'image',
-            label: `${getLayerName(layer)} (poster)`,
-          },
-        });
-      }
-    }
-
-    // Audio layer - extract src asset
-    if (layer.name === 'audio' && layer.variables?.audio?.src) {
-      const audioSrc = layer.variables.audio.src;
-      if (audioSrc.type === 'asset' && audioSrc.data?.asset_id) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:audio_src`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:audio_src`,
-          content_type: 'asset_id',
-          content_value: audioSrc.data.asset_id,
-          info: {
-            icon: 'audio',
-            label: `${getLayerName(layer)} (source)`,
-          },
-        });
-      }
-    }
-
-    // Icons are intentionally not exposed for translation: they are typically
-    // identical across locales and translating them adds noise to the UI.
-
-    // Recursively process children
     if (layer.children && Array.isArray(layer.children) && layer.children.length > 0) {
       extractLayerTranslatableItems(layer.children, sourceType, sourceId, items);
     }
@@ -712,15 +637,17 @@ export function extractCmsTranslatableItems(
       ? `field:key:${field.key}`
       : `field:id:${field.id}`;
 
+    const isRichText = field.type === 'rich_text';
     items.push({
       key: `cms:${collectionItem.id}:${contentKey}`,
       source_type: 'cms',
       source_id: collectionItem.id,
       content_key: contentKey,
-      content_type: field.type === 'rich_text' ? 'richtext' : 'text',
+      content_type: isRichText ? 'richtext' : 'text',
       content_value: contentValue,
+      open_in_sheet: isRichText,
       info: {
-        icon: field.type === 'rich_text' ? 'type' : 'text',
+        icon: isRichText ? 'type' : 'text',
         label: field.name,
         description: isSlugField ? `Affects ${localeName} URLs generated by dynamic pages using this CMS item` : undefined,
       },
@@ -1088,16 +1015,16 @@ export function extractLayerTranslatableItemsShallow(
 
   if (layer.key === 'localeSelectorLabel') return items;
 
-  const text = extractLayerText(layer);
-  if (text) {
-    const contentType = layer.variables?.text?.type === 'dynamic_rich_text' ? 'richtext' : 'text';
+  const classification = classifyLayerTextForTranslation(layer);
+  if (classification) {
     items.push({
       key: `${sourceType}:${sourceId}:layer:${layer.id}:text`,
       source_type: sourceType,
       source_id: sourceId,
       content_key: `layer:${layer.id}:text`,
-      content_type: contentType,
-      content_value: text,
+      content_type: classification.contentType,
+      content_value: classification.value,
+      open_in_sheet: classification.openInSheet,
       info: {
         icon: getLayerIcon(layer),
         label: getLayerName(layer),
@@ -1105,109 +1032,7 @@ export function extractLayerTranslatableItemsShallow(
     });
   }
 
-  if (layer.name === 'image' && layer.variables?.image) {
-    const imageSrc = layer.variables.image.src;
-    if (imageSrc && imageSrc.type === 'asset' && imageSrc.data?.asset_id) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:image_src`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:image_src`,
-        content_type: 'asset_id',
-        content_value: imageSrc.data.asset_id,
-        info: {
-          icon: 'image',
-          label: `${getLayerName(layer)} (source)`,
-        },
-      });
-    }
-
-    const imageAlt = extractImageAltText(layer);
-    if (imageAlt) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:image_alt`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:image_alt`,
-        content_type: 'text',
-        content_value: imageAlt,
-        info: {
-          icon: 'image',
-          label: `${getLayerName(layer)} (alt text)`,
-        },
-      });
-    }
-  }
-
-  if (layer.name === 'video' && layer.variables?.video) {
-    const videoSrc = layer.variables.video.src;
-    if (videoSrc && videoSrc.type === 'asset' && videoSrc.data?.asset_id) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:video_src`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:video_src`,
-        content_type: 'asset_id',
-        content_value: videoSrc.data.asset_id,
-        info: {
-          icon: 'video',
-          label: `${getLayerName(layer)} (source)`,
-        },
-      });
-    }
-
-    const videoPoster = layer.variables.video.poster;
-    if (videoPoster && videoPoster.type === 'asset' && videoPoster.data?.asset_id) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:video_poster`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:video_poster`,
-        content_type: 'asset_id',
-        content_value: videoPoster.data.asset_id,
-        info: {
-          icon: 'image',
-          label: `${getLayerName(layer)} (poster)`,
-        },
-      });
-    }
-  }
-
-  if (layer.name === 'audio' && layer.variables?.audio?.src) {
-    const audioSrc = layer.variables.audio.src;
-    if (audioSrc.type === 'asset' && audioSrc.data?.asset_id) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:audio_src`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:audio_src`,
-        content_type: 'asset_id',
-        content_value: audioSrc.data.asset_id,
-        info: {
-          icon: 'audio',
-          label: `${getLayerName(layer)} (source)`,
-        },
-      });
-    }
-  }
-
-  if (layer.name === 'icon' && layer.variables?.icon?.src) {
-    const iconSrc = layer.variables.icon.src;
-    if (iconSrc.type === 'asset' && iconSrc.data?.asset_id) {
-      items.push({
-        key: `${sourceType}:${sourceId}:layer:${layer.id}:icon_src`,
-        source_type: sourceType,
-        source_id: sourceId,
-        content_key: `layer:${layer.id}:icon_src`,
-        content_type: 'asset_id',
-        content_value: iconSrc.data.asset_id,
-        info: {
-          icon: 'icon',
-          label: `${getLayerName(layer)} (source)`,
-        },
-      });
-    }
-  }
+  extractMediaTranslatableItems(layer, sourceType, sourceId, items);
 
   return items;
 }

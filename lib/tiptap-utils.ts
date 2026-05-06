@@ -225,6 +225,31 @@ export function getSoleCmsFieldBinding(content: any): ReturnType<typeof getCmsFi
   return getCmsFieldBinding(nodes[0]);
 }
 
+/** True if a Tiptap doc contains at least one dynamicVariable node. */
+export function hasVariableNode(doc: any): boolean {
+  if (!doc?.content || !Array.isArray(doc.content)) return false;
+  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'dynamicVariable') return true;
+    if (Array.isArray(n.content)) return walk(n.content);
+    return false;
+  });
+  return walk(doc.content);
+}
+
+/** True if a Tiptap doc contains at least one text or dynamicVariable node. */
+export function hasAnyTextOrVariable(doc: any): boolean {
+  if (!doc?.content || !Array.isArray(doc.content)) return false;
+  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'text' && typeof n.text === 'string' && n.text.length > 0) return true;
+    if (n.type === 'dynamicVariable') return true;
+    if (Array.isArray(n.content)) return walk(n.content);
+    return false;
+  });
+  return walk(doc.content);
+}
+
 /** Check if Tiptap JSON content contains components or inline variables (non-editable on canvas). */
 export function hasComponentOrVariable(node: any): boolean {
   if (!node || typeof node !== 'object') return false;
@@ -273,9 +298,6 @@ export function tiptapDocHasFormatting(doc: any): boolean {
   // Multiple block-level nodes implies structure (paragraph break)
   if (blocks.length > 1) return true;
 
-  const PLAIN_INLINE_MARK_TYPES: ReadonlySet<string> = new Set();
-  // Any mark counts as formatting; we don't whitelist any.
-
   const NON_PLAIN_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'heading',
     'bulletList',
@@ -299,8 +321,6 @@ export function tiptapDocHasFormatting(doc: any): boolean {
     if (n.type && NON_PLAIN_BLOCK_TYPES.has(n.type)) return true;
     if (n.type === 'hardBreak') return true;
     if (n.type === 'text' && Array.isArray(n.marks) && n.marks.length > 0) {
-      // Any mark on a text node is formatting (bold, italic, link, etc.)
-      void PLAIN_INLINE_MARK_TYPES;
       return true;
     }
     if (Array.isArray(n.content) && n.content.length > 0) return walk(n.content);

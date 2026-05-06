@@ -167,52 +167,6 @@ function looksLikeUuid(id: string): boolean {
 }
 
 /**
- * Determine whether a string contains any actual translatable text after
- * stripping all known inline variable markup formats. Used to detect legacy
- * translation values that consist solely of variable references (which carry
- * no real translation — the value comes from the bound field at render time).
- */
-export function hasTranslatableTextInValue(value: string): boolean {
-  if (!value) return false;
-  const stripped = value
-    // canonical inline variable tags
-    .replace(/<ycode-inline-variable\b[^>]*>[\s\S]*?<\/ycode-inline-variable>/gi, '')
-    .replace(/<ycode-inline-variable\b[^>]*\/>/gi, '')
-    // legacy span-based variable markup (any attribute order, single or double quotes)
-    .replace(/<span\b[^>]*\b(y_variable|y_dynamic_variable|data-variable)\s*=\s*["'][^"']*["'][^>]*>[\s\S]*?<\/span>/gi, '')
-    .replace(/<span\b[^>]*\b(y_variable|y_dynamic_variable|data-variable)\s*=\s*["'][^"']*["'][^>]*\/?>/gi, '')
-    // raw JSON variable objects sometimes embedded directly in the value
-    .replace(/\{"type":"[^"]+","data":\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^{}]*\}/g, '')
-    // residual empty wrapping spans
-    .replace(/<span\b[^>]*>\s*<\/span>/gi, '')
-    // strip any other lingering tags
-    .replace(/<[^>]+>/g, '');
-  return stripped.replace(/\s+/g, '').length > 0;
-}
-
-/**
- * Variant of {@link hasTranslatableTextInValue} that also understands Tiptap
- * JSON documents. A Tiptap doc is considered translatable when it contains at
- * least one non-empty text node (dynamicVariable nodes alone don't count).
- */
-export function hasTranslatableTextInRichValue(value: string | unknown): boolean {
-  // Try Tiptap JSON first
-  const doc = typeof value === 'object' ? value as any : (() => {
-    if (typeof value !== 'string' || !value.trim().startsWith('{')) return null;
-    try { return JSON.parse(value); } catch { return null; }
-  })();
-  if (doc?.type === 'doc' && Array.isArray(doc.content)) {
-    const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
-      if (n.type === 'text' && typeof n.text === 'string' && n.text.trim().length > 0) return true;
-      if (Array.isArray(n.content)) return walk(n.content);
-      return false;
-    });
-    return walk(doc.content);
-  }
-  return typeof value === 'string' ? hasTranslatableTextInValue(value) : false;
-}
-
-/**
  * Build the canonical <ycode-inline-variable> tag from a field id and label.
  * Embeds an explicit label so the pill renders even when the field can't be looked up.
  */
