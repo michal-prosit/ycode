@@ -256,6 +256,94 @@ export function getRichTextValue(variables?: { text?: { type: string; data: { co
 }
 
 /**
+ * Detect whether a Tiptap document carries any actual rich-text formatting.
+ * "Formatting" includes block-level structure beyond a single paragraph
+ * (headings, lists, blockquotes, code blocks, horizontal rules, images,
+ * tables, embedded components) as well as inline marks (bold, italic,
+ * underline, links, etc.) and hard breaks.
+ *
+ * Used at extraction time to decide whether translatable content should be
+ * surfaced as a rich-text sheet editor or a simple text input — the editor
+ * follows the *current* content, not the source layer's original variable type.
+ */
+export function tiptapDocHasFormatting(doc: any): boolean {
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.content)) return false;
+
+  const blocks = doc.content;
+  // Multiple block-level nodes implies structure (paragraph break)
+  if (blocks.length > 1) return true;
+
+  const PLAIN_INLINE_MARK_TYPES: ReadonlySet<string> = new Set();
+  // Any mark counts as formatting; we don't whitelist any.
+
+  const NON_PLAIN_BLOCK_TYPES: ReadonlySet<string> = new Set([
+    'heading',
+    'bulletList',
+    'orderedList',
+    'listItem',
+    'blockquote',
+    'codeBlock',
+    'horizontalRule',
+    'image',
+    'table',
+    'tableRow',
+    'tableCell',
+    'tableHeader',
+    'iframe',
+    'youtube',
+    'richTextComponent',
+  ]);
+
+  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type && NON_PLAIN_BLOCK_TYPES.has(n.type)) return true;
+    if (n.type === 'hardBreak') return true;
+    if (n.type === 'text' && Array.isArray(n.marks) && n.marks.length > 0) {
+      // Any mark on a text node is formatting (bold, italic, link, etc.)
+      void PLAIN_INLINE_MARK_TYPES;
+      return true;
+    }
+    if (Array.isArray(n.content) && n.content.length > 0) return walk(n.content);
+    return false;
+  });
+
+  return walk(blocks);
+}
+
+/**
+ * Serialize a Tiptap document to a plain-text string with canonical inline
+ * variable tags preserved. Block-level nodes are joined by newlines so that
+ * paragraph structure round-trips through the simple text input.
+ *
+ * This is the inverse of {@link parseValueToContent} for the subset of content
+ * we accept in plain-text translation fields: text, hardBreak, and
+ * dynamicVariable nodes. Any inline marks are dropped (the surrounding caller
+ * has already decided that this content is plain).
+ */
+export function tiptapDocToCanonicalString(doc: any): string {
+  if (!doc?.content || !Array.isArray(doc.content)) return '';
+
+  const serializeNode = (node: any): string => {
+    if (!node || typeof node !== 'object') return '';
+    if (node.type === 'text') return typeof node.text === 'string' ? node.text : '';
+    if (node.type === 'hardBreak') return '\n';
+    if (node.type === 'dynamicVariable') {
+      const variable = node.attrs?.variable;
+      if (!variable) return '';
+      return `<ycode-inline-variable>${JSON.stringify(variable)}</ycode-inline-variable>`;
+    }
+    if (Array.isArray(node.content)) return node.content.map(serializeNode).join('');
+    return '';
+  };
+
+  return doc.content
+    .map(serializeNode)
+    .map((s: string) => s.replace(/[ \t]+/g, ' '))
+    .filter((s: string) => s.length > 0)
+    .join('\n');
+}
+
+/**
  * Extract plain text from Tiptap JSON content
  * Useful for previews, search indexing, or fallback display
  */

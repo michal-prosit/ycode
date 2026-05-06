@@ -1,5 +1,7 @@
 import type { Layer, Page, Translation, Locale, LocaleOption } from '@/types';
 import { getLayerIcon, getLayerName } from '@/lib/layer-utils';
+import { tiptapDocHasFormatting, tiptapDocToCanonicalString } from '@/lib/tiptap-utils';
+import { looksLikeFormattedHtml } from '@/lib/translation-classification';
 import type { IconProps } from '@/components/ui/icon';
 
 /**
@@ -253,6 +255,7 @@ export interface TranslatableItem {
   content_key: string; // Source key (e.g., 'layer:{layerId}:text', 'seo:title', 'slug')
   content_type: 'text' | 'richtext' | 'asset_id'; // Content type (text, richtext, asset)
   content_value: string; // Current text value (may contain inline variables)
+  open_in_sheet?: boolean; // If true, editing opens in a right-side sheet panel (for block-level rich text)
   info: {
     icon: IconProps['name']; // Icon name for the item
     label: string; // Item label (e.g., "SEO Title", "Heading")
@@ -320,6 +323,80 @@ export function extractImageAltText(layer: Layer): string | null {
 }
 
 /**
+ * Decide how a layer's text content should be surfaced in the localization UI.
+ *
+ * Classification follows the *current* content, not the source layer type:
+ * - A `richText` layer whose content currently has formatting (bold, lists,
+ *   headings, etc.) gets the full sheet editor.
+ * - A `richText` layer whose content is currently flat plain text falls back
+ *   to a simple inline input — there's nothing to format anyway.
+ * - All other layers (heading, paragraph, span, etc.) are always flattened
+ *   to plain text. Their on-canvas widget doesn't expose formatting
+ *   controls, so offering them in translation would be misleading.
+ *
+ * The returned `value` always uses the canonical inline-variable string
+ * format for `text` content, and the JSON-stringified Tiptap doc for
+ * `richtext` content, so downstream rendering is unambiguous.
+ */
+function classifyLayerTextForTranslation(
+  layer: Layer
+): { contentType: 'text' | 'richtext'; value: string; openInSheet: boolean } | null {
+  const textVariable = layer.variables?.text;
+  if (!textVariable) return null;
+
+  if (textVariable.type === 'dynamic_text') {
+    const text = textVariable.data.content;
+    if (!text || typeof text !== 'string' || !text.trim()) return null;
+    if (looksLikeFormattedHtml(text)) {
+      return { contentType: 'richtext', value: text.trim(), openInSheet: true };
+    }
+    return { contentType: 'text', value: text.trim(), openInSheet: false };
+  }
+
+  if (textVariable.type === 'dynamic_rich_text') {
+    const doc = textVariable.data.content;
+    if (!doc || typeof doc !== 'object') return null;
+
+    if (tiptapDocHasFormatting(doc) || hasVariableNode(doc)) {
+      const json = JSON.stringify(doc);
+      if (!hasAnyTextOrVariable(doc)) return null;
+      return { contentType: 'richtext', value: json, openInSheet: true };
+    }
+
+    const canonical = tiptapDocToCanonicalString(doc).trim();
+    if (!canonical) return null;
+    return { contentType: 'text', value: canonical, openInSheet: false };
+  }
+
+  return null;
+}
+
+/** True if a Tiptap doc contains at least one dynamicVariable node. */
+function hasVariableNode(doc: any): boolean {
+  if (!doc?.content || !Array.isArray(doc.content)) return false;
+  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'dynamicVariable') return true;
+    if (Array.isArray(n.content)) return walk(n.content);
+    return false;
+  });
+  return walk(doc.content);
+}
+
+/** True if a Tiptap doc contains at least one text or dynamicVariable node. */
+function hasAnyTextOrVariable(doc: any): boolean {
+  if (!doc?.content || !Array.isArray(doc.content)) return false;
+  const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
+    if (!n || typeof n !== 'object') return false;
+    if (n.type === 'text' && typeof n.text === 'string' && n.text.length > 0) return true;
+    if (n.type === 'dynamicVariable') return true;
+    if (Array.isArray(n.content)) return walk(n.content);
+    return false;
+  });
+  return walk(doc.content);
+}
+
+/**
  * Recursively extract all translatable text items from layers
  */
 function extractLayerTranslatableItems(
@@ -332,21 +409,17 @@ function extractLayerTranslatableItems(
     // Skip locale selector label as it is dynamically generated based on locale
     if (layer.key === 'localeSelectorLabel') continue;
 
-    // Extract text from this layer (including inline variables)
-    const text = extractLayerText(layer);
+    const classification = classifyLayerTextForTranslation(layer);
 
-    if (text) {
-      // Determine content type based on the variable type
-      // If the layer uses DynamicRichTextVariable, mark it as 'richtext'
-      const contentType = layer.variables?.text?.type === 'dynamic_rich_text' ? 'richtext' : 'text';
-
+    if (classification) {
       items.push({
         key: `${sourceType}:${sourceId}:layer:${layer.id}:text`,
         source_type: sourceType,
         source_id: sourceId,
         content_key: `layer:${layer.id}:text`,
-        content_type: contentType,
-        content_value: text,
+        content_type: classification.contentType,
+        content_value: classification.value,
+        open_in_sheet: classification.openInSheet,
         info: {
           icon: getLayerIcon(layer),
           label: getLayerName(layer),
@@ -446,24 +519,8 @@ function extractLayerTranslatableItems(
       }
     }
 
-    // Icon layer - extract src asset
-    if (layer.name === 'icon' && layer.variables?.icon?.src) {
-      const iconSrc = layer.variables.icon.src;
-      if (iconSrc.type === 'asset' && iconSrc.data?.asset_id) {
-        items.push({
-          key: `${sourceType}:${sourceId}:layer:${layer.id}:icon_src`,
-          source_type: sourceType,
-          source_id: sourceId,
-          content_key: `layer:${layer.id}:icon_src`,
-          content_type: 'asset_id',
-          content_value: iconSrc.data.asset_id,
-          info: {
-            icon: 'icon',
-            label: `${getLayerName(layer)} (source)`,
-          },
-        });
-      }
-    }
+    // Icons are intentionally not exposed for translation: they are typically
+    // identical across locales and translating them adds noise to the UI.
 
     // Recursively process children
     if (layer.children && Array.isArray(layer.children) && layer.children.length > 0) {
@@ -475,6 +532,13 @@ function extractLayerTranslatableItems(
 /**
  * Extract SEO translatable items from page settings
  */
+function classifySeoValue(value: string): { contentType: 'text' | 'richtext'; openInSheet: boolean } {
+  if (looksLikeFormattedHtml(value) || value.includes('<ycode-inline-variable>')) {
+    return { contentType: 'richtext', openInSheet: true };
+  }
+  return { contentType: 'text', openInSheet: false };
+}
+
 function extractSeoItems(
   pageId: string,
   seo: { title?: string; description?: string } | undefined,
@@ -483,13 +547,15 @@ function extractSeoItems(
   if (!seo) return;
 
   if (seo.title && typeof seo.title === 'string' && seo.title.trim()) {
+    const classification = classifySeoValue(seo.title);
     items.push({
       key: `page:${pageId}:seo:title`,
       source_type: 'page',
       source_id: pageId,
       content_key: 'seo:title',
-      content_type: 'text',
+      content_type: classification.contentType,
       content_value: seo.title.trim(),
+      open_in_sheet: classification.openInSheet,
       info: {
         icon: 'search',
         label: 'SEO Title',
@@ -498,13 +564,15 @@ function extractSeoItems(
   }
 
   if (seo.description && typeof seo.description === 'string' && seo.description.trim()) {
+    const classification = classifySeoValue(seo.description);
     items.push({
       key: `page:${pageId}:seo:description`,
       source_type: 'page',
       source_id: pageId,
       content_key: 'seo:description',
-      content_type: 'text',
+      content_type: classification.contentType,
       content_value: seo.description.trim(),
+      open_in_sheet: classification.openInSheet,
       info: {
         icon: 'search',
         label: 'SEO Description',
