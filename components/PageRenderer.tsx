@@ -163,6 +163,19 @@ function hasLightboxLayers(layers: Layer[]): boolean {
   return false;
 }
 
+/**
+ * Recursively check if any layer in the tree has interactions configured.
+ * Used to skip rendering AnimationInitializer (and shipping ~50KB of GSAP +
+ * ScrollTrigger + SplitText to the client) for pages with no animations.
+ */
+function hasAnyInteractions(layers: Layer[]): boolean {
+  for (const layer of layers) {
+    if (layer.interactions?.length) return true;
+    if (layer.children && hasAnyInteractions(layer.children)) return true;
+  }
+  return false;
+}
+
 /** Password protection context for 401 error pages */
 export type PasswordProtectionContext = {
   pageId?: string;
@@ -575,8 +588,10 @@ export default async function PageRenderer({
         )}
       </main>
 
-      {/* Initialize GSAP animations based on layer interactions */}
-      <AnimationInitializer layers={animationLayers} />
+      {/* Initialize GSAP animations based on layer interactions.
+          Skipped entirely when no layer has interactions so we don't ship
+          GSAP + ScrollTrigger + SplitText to the client for static pages. */}
+      {hasAnyInteractions(resolvedLayers) && <AnimationInitializer layers={animationLayers} />}
 
       {/* Initialize Swiper on slider elements */}
       {hasSliderLayers(resolvedLayers) && <SliderInitializer />}

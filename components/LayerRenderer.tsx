@@ -12,7 +12,7 @@ import type { UseLiveLayerUpdatesReturn } from '@/hooks/use-live-layer-updates';
 import type { UseLiveComponentUpdatesReturn } from '@/hooks/use-live-component-updates';
 import { getLayerHtmlTag, getClassesString, getText, resolveFieldValue, isTextEditable, isTextContentLayer, isRichTextLayer, getCollectionVariable, evaluateVisibility, findAncestorByName, filterDisabledSliderLayers, getLayerCmsFieldBinding, findLayerById } from '@/lib/layer-utils';
 import { getMapIframeProps, DEFAULT_MAP_SETTINGS, resolveMarkerColor } from '@/lib/map-utils';
-import { SWIPER_CLASS_MAP, SWIPER_DATA_ATTR_MAP } from '@/lib/templates/utilities';
+import { SWIPER_CLASS_MAP, SWIPER_DATA_ATTR_MAP } from '@/lib/slider-constants';
 import { useCanvasSlider } from '@/hooks/use-canvas-slider';
 import { resolveFieldFromSources } from '@/lib/cms-variables-utils';
 import { getDynamicTextContent, getImageUrlFromVariable, getVideoUrlFromVariable, getIframeUrlFromVariable, isFieldVariable, isAssetVariable, isStaticTextVariable, isDynamicTextVariable, getAssetId, getStaticTextContent, createAssetVariable, createDynamicTextVariable, resolveDesignStyles } from '@/lib/variable-utils';
