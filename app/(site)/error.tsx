@@ -17,6 +17,7 @@ interface ErrorProps {
 export default function Error({ error, reset }: ErrorProps) {
   const [errorPageData, setErrorPageData] = useState<PageData | null>(null);
   const [generatedCss, setGeneratedCss] = useState<string>('');
+  const [colorVariablesCss, setColorVariablesCss] = useState<string>('');
   const [showBadge, setShowBadge] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,6 +31,7 @@ export default function Error({ error, reset }: ErrorProps) {
           const data = await response.json();
           setErrorPageData(data.pageData);
           setGeneratedCss(data.css || '');
+          setColorVariablesCss(data.colorVariablesCss || '');
           setShowBadge(data.ycodeBadge ?? true);
         }
       } catch (err) {
@@ -54,6 +56,12 @@ export default function Error({ error, reset }: ErrorProps) {
           <style
             id="ycode-styles"
             dangerouslySetInnerHTML={{ __html: generatedCss }}
+          />
+        )}
+        {colorVariablesCss && (
+          <style
+            id="ycode-color-vars"
+            dangerouslySetInnerHTML={{ __html: colorVariablesCss }}
           />
         )}
         {customCodeHead && (

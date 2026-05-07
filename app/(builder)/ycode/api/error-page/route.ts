@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchErrorPage } from '@/lib/page-fetcher';
 import { getSettingsByKeys } from '@/lib/repositories/settingsRepository';
+import { generateColorVariablesCss } from '@/lib/repositories/colorVariableRepository';
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -44,11 +45,15 @@ export async function GET(request: NextRequest) {
     }
 
     const cssKey = published ? 'published_css' : 'draft_css';
-    const settings = await getSettingsByKeys([cssKey, 'ycode_badge']);
+    const [settings, colorVariablesCss] = await Promise.all([
+      getSettingsByKeys([cssKey, 'ycode_badge']),
+      generateColorVariablesCss(),
+    ]);
 
     return NextResponse.json({
       pageData,
       css: settings[cssKey] || null,
+      colorVariablesCss,
       ycodeBadge: settings.ycode_badge ?? true,
     });
   } catch (error) {
