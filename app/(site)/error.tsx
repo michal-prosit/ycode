@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import LayerRenderer from '@/components/LayerRenderer';
+import LayerRendererPublic from '@/components/LayerRendererPublic';
 import YcodeBadge from '@/components/YcodeBadge';
 import type { PageData } from '@/lib/page-fetcher';
 
@@ -68,9 +68,8 @@ export default function Error({ error, reset }: ErrorProps) {
           <div dangerouslySetInnerHTML={{ __html: customCodeHead }} />
         )}
         <div className="min-h-screen bg-white">
-          <LayerRenderer
+          <LayerRendererPublic
             layers={errorPageData.pageLayers.layers || []}
-            isEditMode={false}
             isPublished={true}
             pageCollectionItemData={errorPageData.collectionItem?.values || undefined}
           />
