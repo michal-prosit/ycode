@@ -371,12 +371,35 @@ export function getImageSizes(): string {
   return '100vw';
 }
 
+// Semantic layer names whose descendant images are almost never the LCP
+// (logos, menus, footer marks). Tracked via ancestor walk in
+// `findLcpCandidateLayerId` so we don't accidentally prioritize a header
+// logo over the actual hero image.
+const NON_LCP_ANCESTOR_NAMES = new Set(['header', 'footer', 'nav']);
+
+/**
+ * Heuristic: is this resolved asset a vector graphic (SVG)?
+ * SVGs are used overwhelmingly for logos / icons and should never be picked
+ * as the LCP candidate. We trust `mimeType` when present and fall back to a
+ * URL extension sniff for older callers that only pass `{ url, width }`.
+ */
+function isSvgAsset(asset: { mimeType?: string | null; url?: string | null } | undefined): boolean {
+  if (!asset) return false;
+  if (asset.mimeType && asset.mimeType.toLowerCase().includes('svg')) return true;
+  if (asset.url) {
+    const path = asset.url.split('?')[0].split('#')[0].toLowerCase();
+    if (path.endsWith('.svg')) return true;
+  }
+  return false;
+}
+
 /**
  * Find the layer id that should be treated as the LCP (Largest Contentful Paint)
- * candidate for a given page tree. Walks the tree in render order and returns the
- * first `image`-named layer whose effective intrinsic width is unknown or at
- * least `minWidth` pixels. The threshold filters out logos and icons that
- * commonly appear in headers but are not the actual hero image.
+ * candidate for a given page tree. Walks the tree in render order and returns
+ * the first `image`-named layer that:
+ *   - is NOT a descendant of a `header`, `footer`, or `nav` layer (logos),
+ *   - is NOT backed by an SVG asset (vector logos / icons), and
+ *   - has an effective intrinsic width unknown or at least `minWidth` pixels.
  *
  * Width resolution order:
  *   1. `layer.attributes.width` (parsed as int)
@@ -387,7 +410,7 @@ export function getImageSizes(): string {
  */
 export function findLcpCandidateLayerId(
   layers: Layer[],
-  resolvedAssets?: Record<string, { width?: number | null }>,
+  resolvedAssets?: Record<string, { width?: number | null; mimeType?: string | null; url?: string | null }>,
   minWidth: number = 200
 ): string | null {
   const parseWidth = (value: unknown): number | null => {
@@ -399,30 +422,31 @@ export function findLcpCandidateLayerId(
     return isNaN(n) ? null : n;
   };
 
-  const visit = (layer: Layer): string | null => {
-    if (layer.name === 'image') {
-      // Try the explicit width attribute first
-      let width = parseWidth(layer.attributes?.width);
+  const visit = (layer: Layer, inNonLcpAncestor: boolean): string | null => {
+    const inNonLcp = inNonLcpAncestor || NON_LCP_ANCESTOR_NAMES.has(layer.name);
 
-      // Fall back to the resolved asset's intrinsic width
-      if (width === null && resolvedAssets) {
-        const assetId = isAssetVariable(layer.variables?.image?.src)
-          ? getAssetId(layer.variables.image.src)
-          : undefined;
-        if (assetId && resolvedAssets[assetId]?.width) {
-          width = resolvedAssets[assetId].width as number;
+    if (layer.name === 'image' && !inNonLcp) {
+      const assetId = isAssetVariable(layer.variables?.image?.src)
+        ? getAssetId(layer.variables.image.src)
+        : undefined;
+      const asset = assetId ? resolvedAssets?.[assetId] : undefined;
+
+      // SVGs are vector logos / icons in practice — never the hero image.
+      if (!isSvgAsset(asset)) {
+        let width = parseWidth(layer.attributes?.width);
+        if (width === null && asset?.width) {
+          width = asset.width as number;
         }
-      }
 
-      // Width unknown OR meets the threshold -> candidate
-      if (width === null || width >= minWidth) {
-        return layer.id;
+        if (width === null || width >= minWidth) {
+          return layer.id;
+        }
       }
     }
 
     if (layer.children) {
       for (const child of layer.children) {
-        const found = visit(child);
+        const found = visit(child, inNonLcp);
         if (found) return found;
       }
     }
@@ -431,7 +455,7 @@ export function findLcpCandidateLayerId(
   };
 
   for (const layer of layers) {
-    const found = visit(layer);
+    const found = visit(layer, false);
     if (found) return found;
   }
 

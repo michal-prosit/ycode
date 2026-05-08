@@ -434,12 +434,15 @@ export default async function PageRenderer({
 
   // Fetch all assets and build resolved map
   // Use draft assets (isPublished=false) for preview mode, published assets otherwise
-  let resolvedAssets: Record<string, { url: string; width?: number | null; height?: number | null }> | undefined;
+  // `mimeType` is tracked locally so the LCP heuristic can skip SVG logos;
+  // it is stripped before passing the map across the client boundary.
+  type ResolvedAssetEntry = { url: string; width?: number | null; height?: number | null; mimeType?: string };
+  let resolvedAssetsWithMime: Record<string, ResolvedAssetEntry> | undefined;
   if (layerAssetIds.size > 0) {
     try {
       const { getAssetsByIds } = await import('@/lib/repositories/assetRepository');
       const assetMap = await getAssetsByIds(Array.from(layerAssetIds), !isPreview);
-      resolvedAssets = {};
+      resolvedAssetsWithMime = {};
       for (const [id, asset] of Object.entries(assetMap)) {
         let url: string | undefined;
         const proxyUrl = getAssetProxyUrl(asset);
@@ -451,7 +454,7 @@ export default async function PageRenderer({
           url = asset.content;
         }
         if (url) {
-          resolvedAssets[id] = { url, width: asset.width, height: asset.height };
+          resolvedAssetsWithMime[id] = { url, width: asset.width, height: asset.height, mimeType: asset.mime_type };
         }
       }
     } catch (error) {
@@ -460,9 +463,18 @@ export default async function PageRenderer({
   }
 
   // Identify the LCP candidate so the renderer can flip its loading=lazy
-  // template default to eager + fetchpriority=high. Skips images smaller than
-  // ~200px to avoid prioritizing logos/icons.
-  const lcpCandidateLayerId = findLcpCandidateLayerId(childLayers, resolvedAssets);
+  // template default to eager + fetchpriority=high. Skips logos/icons by
+  // ignoring images inside header/footer/nav and SVG-backed assets.
+  const lcpCandidateLayerId = findLcpCandidateLayerId(childLayers, resolvedAssetsWithMime);
+
+  // Strip mimeType before crossing the client component boundary — only
+  // url/width/height are part of the shared `resolvedAssets` contract.
+  const resolvedAssets: Record<string, { url: string; width?: number | null; height?: number | null }> | undefined =
+    resolvedAssetsWithMime
+      ? Object.fromEntries(
+        Object.entries(resolvedAssetsWithMime).map(([id, { url, width, height }]) => [id, { url, width, height }])
+      )
+      : undefined;
 
   return (
     <>
