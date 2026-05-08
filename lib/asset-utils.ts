@@ -325,21 +325,34 @@ export function getOptimizedImageUrl(
  * Generate responsive image srcset with multiple sizes
  * Creates optimized URLs for different viewport widths
  * @param url - Original image URL
- * @param sizes - Array of widths in pixels (default: [320, 640, 960, 1280, 1920])
+ * @param sizes - Array of widths in pixels (default: see below)
  * @param quality - Image quality 0-100 (default: 85)
  * @returns Srcset string with multiple size options
  *
- * The 320 entry covers small mobile viewports; 1920 is the cap because
- * higher resolutions (e.g. 2560) get picked unnecessarily on retina mobile
- * even though the rendered image is much smaller.
+ * Default ladder: 320, 480, 640, 750, 828, 1080, 1280, 1536, 1920.
+ * Picked to land within ~10% of the natural rendered size for every common
+ * viewport × DPR combination — coarser ladders (e.g. 640 → 960 → 1280) made
+ * mid-range phones download the next-bigger variant and wasted 20–30% of
+ * the byte budget on hero images.
+ *
+ *   320 — tiny viewports / small thumbnails
+ *   480 — older phones at 1x
+ *   640 — medium phones, tablet portrait at 1x
+ *   750 — iPhone SE/8 at 2x DPR (375 × 2)
+ *   828 — iPhone XR/11 at 2x DPR (414 × 2)
+ *  1080 — Pixel / Galaxy at 3x DPR (360 × 3)
+ *  1280 — iPhone 12–15 at ~3x DPR (390–430 × 3)
+ *  1536 — tablets at 2x DPR
+ *  1920 — full-width desktop hero (cap — bigger variants get picked on
+ *         retina laptops even when the rendered size is much smaller).
  *
  * @example
  * generateImageSrcset('https://supabase.co/storage/v1/object/public/assets/image.jpg')
- * // Returns: 'https://.../image.jpg?width=320&quality=85 320w, https://.../image.jpg?width=640&quality=85 640w, ...'
+ * // Returns: 'https://.../image.jpg?width=320&quality=85 320w, https://.../image.jpg?width=480&quality=85 480w, ...'
  */
 export function generateImageSrcset(
   url: string,
-  sizes: number[] = [320, 640, 960, 1280, 1920],
+  sizes: number[] = [320, 480, 640, 750, 828, 1080, 1280, 1536, 1920],
   quality: number = 85
 ): string {
   if (!isTransformableUrl(url)) return '';
