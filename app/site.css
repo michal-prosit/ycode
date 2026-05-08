@@ -1,0 +1,77 @@
+/*
+ * Slim Tailwind bundle for published & preview pages (the `(site)` route group).
+ *
+ * Why this exists: `app/globals.css` pulls in the full builder UI theme —
+ * shadcn color variables, dark mode, ProseMirror, Sonner toasts, etc. That
+ * stylesheet ships ~28 KiB of render-blocking CSS to every published page,
+ * even though published pages never reference any of it. The page-specific
+ * Tailwind utilities user layers actually use are generated separately and
+ * inlined as `<style id="ycode-styles">` by `PageRenderer.tsx`.
+ *
+ * To keep this bundle truly minimal we disable Tailwind's automatic source
+ * detection (which would scan the whole project including the entire
+ * builder UI) and explicitly enumerate only the components that render on
+ * published / preview pages.
+ */
+
+@import "tailwindcss" source(none);
+
+/* Public-facing renderer components — all of these emit classes that need
+   to exist in the published-site CSS. Builder-only components (sidebars,
+   modals, RichTextEditor, shadcn primitives) are intentionally NOT listed
+   so their utilities don't leak into the public bundle. */
+@source "../app/(site)";
+@source "../components/PageRenderer.tsx";
+@source "../components/LayerRenderer.tsx";
+@source "../components/LayerRendererPublic.tsx";
+@source "../components/LayerWrapper.tsx";
+@source "../components/PasswordForm.tsx";
+@source "../components/YcodeBadge.tsx";
+@source "../components/AnimationInitializer.tsx";
+@source "../components/SliderInitializer.tsx";
+@source "../components/LightboxInitializer.tsx";
+@source "../components/CustomCodeInjector.tsx";
+@source "../components/BodyClassApplier.tsx";
+@source "../components/ContentHeightReporter.tsx";
+@source "../components/RootLayoutShell.tsx";
+@source "../components/DarkModeProvider.tsx";
+@source "../components/FilterableCollection.tsx";
+@source "../components/LoadMoreCollection.tsx";
+@source "../components/PaginatedCollection.tsx";
+@source "../components/layers/LocaleSelector.tsx";
+@source "../components/collaboration/EditingIndicator.tsx";
+@source "../components/collaboration/LayerLockIndicator.tsx";
+@source "../components/ui/shimmer-skeleton.tsx";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* `--font-inter` is only defined inside the builder layout. On public
+     published pages the variable is undefined and these fall back to the
+     system font stacks — keeps marketing sites from downloading Inter just
+     because something used the generic `font-sans` class. */
+  --font-sans: var(--font-inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+  --font-mono: var(--font-inter, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace);
+
+  /* Used by ShimmerSkeleton (shown in collection layouts while items load). */
+  --animate-shimmer: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Custom dropdown chevron for native <select> elements on published pages.
+   The native arrow is removed by the inline `ycode-form-reset` styles in
+   PageRenderer.tsx; this rule restores a consistent chevron. */
+#ybody select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+}
