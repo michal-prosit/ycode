@@ -1,47 +1,23 @@
 /*
  * Slim Tailwind bundle for published & preview pages (the `(site)` route group).
  *
- * Why this exists: `app/globals.css` pulls in the full builder UI theme —
- * shadcn color variables, dark mode, ProseMirror, Sonner toasts, etc. That
- * stylesheet ships ~28 KiB of render-blocking CSS to every published page,
- * even though published pages never reference any of it. The page-specific
- * Tailwind utilities user layers actually use are generated separately and
- * inlined as `<style id="ycode-styles">` by `PageRenderer.tsx`.
+ * Why this exists: `app/globals.css` defines the full builder UI theme —
+ * shadcn color variables, dark-mode tokens, ProseMirror, Sonner toasts, etc.
+ * Public pages never reference any of it; per-page utilities used by user
+ * layers are inlined as `<style id="ycode-styles">` by `PageRenderer.tsx`.
  *
- * To keep this bundle truly minimal we disable Tailwind's automatic source
- * detection (which would scan the whole project including the entire
- * builder UI) and explicitly enumerate only the components that render on
- * published / preview pages.
+ * To keep this bundle small we let Tailwind scan the project as usual but
+ * exclude the heavy builder UI route group. Files like `lib/templates/**`,
+ * `lib/page-utils.ts`, `lib/text-format-utils.ts` and the public renderer
+ * components stay in scope so all the arbitrary-value classes they carry
+ * (gap-[20px], leading-[1.5], etc.) end up in the bundle.
  */
 
-@import "tailwindcss" source(none);
+@import "tailwindcss";
 
-/* Public-facing renderer components — all of these emit classes that need
-   to exist in the published-site CSS. Builder-only components (sidebars,
-   modals, RichTextEditor, shadcn primitives) are intentionally NOT listed
-   so their utilities don't leak into the public bundle. */
-@source "../app/(site)";
-@source "../components/PageRenderer.tsx";
-@source "../components/LayerRenderer.tsx";
-@source "../components/LayerRendererPublic.tsx";
-@source "../components/LayerWrapper.tsx";
-@source "../components/PasswordForm.tsx";
-@source "../components/YcodeBadge.tsx";
-@source "../components/AnimationInitializer.tsx";
-@source "../components/SliderInitializer.tsx";
-@source "../components/LightboxInitializer.tsx";
-@source "../components/CustomCodeInjector.tsx";
-@source "../components/BodyClassApplier.tsx";
-@source "../components/ContentHeightReporter.tsx";
-@source "../components/RootLayoutShell.tsx";
-@source "../components/DarkModeProvider.tsx";
-@source "../components/FilterableCollection.tsx";
-@source "../components/LoadMoreCollection.tsx";
-@source "../components/PaginatedCollection.tsx";
-@source "../components/layers/LocaleSelector.tsx";
-@source "../components/collaboration/EditingIndicator.tsx";
-@source "../components/collaboration/LayerLockIndicator.tsx";
-@source "../components/ui/shimmer-skeleton.tsx";
+/* Builder UI is not rendered on published pages — drop ~150 KiB of
+   sidebar/modal/dropdown utilities by excluding the route group. */
+@source not "../app/(builder)";
 
 @custom-variant dark (&:is(.dark *));
 
