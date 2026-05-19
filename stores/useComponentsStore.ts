@@ -701,21 +701,39 @@ export const useComponentsStore = create<ComponentsStore>((set, get) => {
 
         // Regenerate CSS to include updated component classes. Collect layers
         // from every variant so styles unique to a non-default variant are
-        // also captured.
+        // also captured. Run this off the critical path so navigation/UI is
+        // not blocked.
         scheduleIdle(async () => {
           try {
-            const { generateAndSaveCSS } = await import('@/lib/client/cssGenerator');
             const { usePagesStore } = await import('./usePagesStore');
             const { containsComponent } = await import('@/lib/component-utils');
 
-            const allLayers: Layer[] = variantsBeingSaved.flatMap(v => v.layers);
             const allDrafts = usePagesStore.getState().draftsByPageId;
+            const affectedPageIds: string[] = [];
+            Object.entries(allDrafts).forEach(([pid, pageDraft]) => {
+              if (pageDraft.layers && containsComponent(pageDraft.layers, componentId)) {
+                affectedPageIds.push(pid);
+              }
+            });
+
+            if (affectedPageIds.length > 0) {
+              fetch('/ycode/api/css/generate-pages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageIds: affectedPageIds }),
+              }).catch(() => {});
+            }
+
+            // Also regenerate global draft_css for builder preview.
+            // Start from all variant layers so non-default variant styles are
+            // included, then append affected page layers.
+            const { generateAndSaveCSS } = await import('@/lib/client/cssGenerator');
+            const allLayers: Layer[] = variantsBeingSaved.flatMap(v => v.layers);
             Object.values(allDrafts).forEach((pageDraft) => {
               if (pageDraft.layers && containsComponent(pageDraft.layers, componentId)) {
                 allLayers.push(...pageDraft.layers);
               }
             });
-
             await generateAndSaveCSS(allLayers);
           } catch (cssError) {
             console.error('Failed to generate CSS after component save:', cssError);
