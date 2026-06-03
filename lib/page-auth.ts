@@ -181,24 +181,20 @@ export function getPasswordProtection(
 }
 
 /**
- * Fetch folders for password protection checks
- * 
- * @param isPublished - If true, fetch only published folders. If false, fetch all (for preview).
+ * Fetch folders for password protection checks.
+ *
+ * @param isPublished - If true, fetch published folders; if false, fetch draft folders (preview).
  * @returns Array of page folders
  */
 export async function fetchFoldersForAuth(isPublished: boolean): Promise<PageFolder[]> {
   const supabase = await getSupabaseAdmin();
   if (!supabase) return [];
 
-  let query = supabase
+  const { data } = await supabase
     .from('page_folders')
     .select('*')
+    .eq('is_published', isPublished)
     .is('deleted_at', null);
 
-  if (isPublished) {
-    query = query.eq('is_published', true);
-  }
-
-  const { data } = await query;
   return (data as PageFolder[]) || [];
 }
