@@ -13,7 +13,7 @@ import {
   getAllPublishedRoutes,
   invalidateForLocalisationChanges,
 } from '@/lib/services/cacheService';
-import { findAffectedPages, findCollectionsEmbeddingComponents } from '@/lib/repositories/pageLayersRepository';
+import { findAffectedPages, findCollectionsEmbeddingComponents, getEmbeddedComponentIdsForCollections } from '@/lib/repositories/pageLayersRepository';
 import { dispatchSitePublishedEvent } from '@/lib/services/webhookService';
 import { getAllDraftPages, hardDeleteSoftDeletedPages, backfillMissingPageHashes } from '@/lib/repositories/pageRepository';
 import { publishComponents, getUnpublishedComponents, hardDeleteSoftDeletedComponents } from '@/lib/repositories/componentRepository';
@@ -668,6 +668,33 @@ export async function POST(request: NextRequest) {
         }
       } catch {
         // Safety: if dependency scan fails, degrade to full invalidation
+        globalChanged = true;
+      }
+
+      // Dynamic CMS pages render components embedded in rich-text field VALUES
+      // (stored in collection_item_values, NOT page_layers). Those pages never
+      // land in cssAffectedPageIds via the page_layers scan above, so their
+      // per-page CSS would stay stale on a component or CMS-value change. Find
+      // the collections that actually embed components — whether the changed
+      // component is embedded, or a published collection's values embed any
+      // component — and fold their dynamic pages into the CSS regen set so
+      // generateCSSForPages recompiles them (it seeds the embedded components).
+      try {
+        const cssCandidateCollectionIds = [...new Set([...publishedCollectionIds, ...componentEmbeddingCollectionIds])];
+        if (cssCandidateCollectionIds.length > 0) {
+          const embeddedByCollection = await getEmbeddedComponentIdsForCollections(cssCandidateCollectionIds);
+          const collectionsWithEmbeds = Array.from(embeddedByCollection.keys());
+          if (collectionsWithEmbeds.length > 0) {
+            const cmsAffected = await findAffectedPages([], [], collectionsWithEmbeds);
+            if (cmsAffected.collectionPageIds.length > 0) {
+              cssAffectedPageIds = [...new Set([...cssAffectedPageIds, ...cmsAffected.collectionPageIds])];
+              console.log(`[Cache] CMS rich-text-embedded components: regenerating CSS for ${cmsAffected.collectionPageIds.length} dynamic page(s)`);
+            }
+          }
+        }
+      } catch (err) {
+        // Non-fatal: degrade to full invalidation so stale CMS pages still refresh
+        console.warn('[Cache] CMS-embedded-component CSS scan failed, escalating:', err instanceof Error ? err.message : err);
         globalChanged = true;
       }
 
